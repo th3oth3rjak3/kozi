@@ -1,9 +1,11 @@
-//! The Tiny Programming Language
+//! The Kozi Programming Language
 //! Author: Jake Hathaway <jake.d.hathaway@gmail.com>
 //! April 14, 2025
 
 const std = @import("std");
 const builtin = @import("builtin");
+const lexer = @import("lexer.zig");
+const parser = @import("parser.zig");
 
 var debugAllocator = std.heap.DebugAllocator(.{}).init;
 
@@ -30,7 +32,7 @@ pub fn getAllocator() struct {
 
 pub fn main() !void {
     // Setup allocator and check for leaks in debug mode.
-    const mem = getAllocator();
+    var mem = getAllocator();
     defer if (mem.is_debug) {
         const result = debugAllocator.deinit();
         if (result == .leak) {
@@ -46,9 +48,9 @@ pub fn main() !void {
 
     // if we have args, run file
     if (args.len > 1) {
-        runFile(mem.allocator, args[1]);
+        try runFile(&mem.allocator, args[1]);
     } else {
-        runRepl(mem.allocator);
+        try runRepl(&mem.allocator);
     }
 }
 
@@ -57,7 +59,7 @@ pub fn main() !void {
 /// Parameters:
 ///  - allocator: The allocator to handle all memory allocations.
 ///  - filePath: The relative file path from the current working directory.
-fn runFile(allocator: std.mem.Allocator, filePath: []const u8) void {
+fn runFile(allocator: *std.mem.Allocator, filePath: []const u8) !void {
     const sourceCode = getFileContents(allocator, filePath) catch |err| {
         const stderr = std.io.getStdErr();
         defer stderr.close();
@@ -67,8 +69,15 @@ fn runFile(allocator: std.mem.Allocator, filePath: []const u8) void {
     };
     defer allocator.free(sourceCode);
 
-    const stdout = std.io.getStdOut();
-    _ = stdout.write(sourceCode) catch {}; // ignore errors because this is temporary.
+    const l = try lexer.Lexer.init(allocator, sourceCode, filePath);
+    defer allocator.destroy(l);
+    var token = try l.nextToken();
+    while (token.tokenType != .Eof) {
+        var buf: [1024]u8 = undefined;
+        const msg = token.toString(&buf);
+        try std.io.getStdOut().writer().print("{s}\n", .{msg});
+        token = try l.nextToken();
+    }
 }
 
 /// getFileContents reads source code from a file.
@@ -79,36 +88,44 @@ fn runFile(allocator: std.mem.Allocator, filePath: []const u8) void {
 ///
 /// Returns:
 ///  - ![]u8: The source code read into memory.
-fn getFileContents(allocator: std.mem.Allocator, filePath: []const u8) ![]u8 {
+fn getFileContents(allocator: *std.mem.Allocator, filePath: []const u8) ![]u8 {
     const kb: usize = 1024;
     const mb: usize = kb * 1024;
     const maxFileSize: usize = 500 * mb;
     const file = try std.fs.cwd().openFile(filePath, .{});
     defer file.close();
-    const fileContents = try file.readToEndAlloc(allocator, maxFileSize);
+    const fileContents = try file.readToEndAlloc(allocator.*, maxFileSize);
     return fileContents;
 }
 
-fn runRepl(allocator: std.mem.Allocator) void {
-    _ = allocator;
-    const stderr = std.io.getStdErr();
-    defer stderr.close();
-    const stdout = std.io.getStdOut();
-    defer stdout.close();
-    const stdin = std.io.getStdIn();
-    defer stdin.close();
-
-    var buffer: [1024]u8 = undefined; // 1KB buffer on the stack
+/// runRepl starts a Read, Eval, Print, Loop cycle in the terminal
+/// for trying out the language.
+fn runRepl(allocator: *std.mem.Allocator) !void {
     while (true) {
+        var buffer: [1024]u8 = undefined; // 1KB buffer on the stack
+        const stdout = std.io.getStdOut();
         stdout.writer().print(">>> ", .{}) catch {}; // TODO: error handling
-        const bytes = stdin.reader().readUntilDelimiterOrEof(&buffer, '\n') catch {
+        const stdin = std.io.getStdIn();
+        const sourceCode = stdin.reader().readUntilDelimiterOrEof(&buffer, '\n') catch {
             return;
         }; // TODO: error handling
-        stdout.writer().print("You said: {s}\n", .{bytes.?}) catch {}; // TODO: error handling
-    }
-
-    const indicator = ">>>";
-    while (true) {
-        stdout.writer().print("{s} ", .{indicator}) catch {}; // TODO: error handling
+        if (sourceCode == null) {
+            continue;
+        }
+        var l = try lexer.Lexer.init(allocator, sourceCode.?, "REPL");
+        defer allocator.destroy(l);
+        // var p = parser.Parser.init(allocator, l);
+        // const program = p.parseProgram();
+        // _ = program;
+        var token = l.nextToken() catch {
+            _ = try std.io.getStdErr().write("The provided input was invalid, please try again.\n");
+            continue;
+        };
+        while (token.tokenType != .Eof) {
+            var buf: [1024]u8 = undefined;
+            const msg = token.toString(&buf);
+            try stdout.writer().print("{s}\n", .{msg});
+            token = try l.nextToken();
+        }
     }
 }
