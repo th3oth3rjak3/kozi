@@ -64,10 +64,12 @@ pub const Lexer = struct {
         self.skipWhitespace();
         switch (self.character) {
             '"' => {
+                // TODO: all these methods that just set the two props are wrong.
                 token.tokenType = .String;
                 token.literal = self.readString();
             },
             '=' => {
+                // TODO: all these methods that just set the two props are wrong.
                 if (self.peekChar() == '=') {
                     self.readChar();
                     token.tokenType = .EqualEqual;
@@ -83,6 +85,7 @@ pub const Lexer = struct {
                 token = try self.newToken(.Minus, 1);
             },
             '!' => {
+                // TODO: all these methods that just set the two props are wrong.
                 if (self.peekChar() == '=') {
                     self.readChar();
                     token.tokenType = .BangEqual;
@@ -98,6 +101,7 @@ pub const Lexer = struct {
                 token = try self.newToken(.Asterisk, 1);
             },
             '<' => {
+                // TODO: all these methods that just set the two props are wrong.
                 if (self.peekChar() == '=') {
                     self.readChar();
                     token.tokenType = .LessEqual;
@@ -107,6 +111,7 @@ pub const Lexer = struct {
                 }
             },
             '>' => {
+                // TODO: all these methods that just set the two props are wrong.
                 if (self.peekChar() == '=') {
                     self.readChar();
                     token.tokenType = .GreaterEqual;
@@ -143,6 +148,7 @@ pub const Lexer = struct {
                 token = try self.newToken(.Colon, 1);
             },
             0 => {
+                // TODO: all these methods that just set the two props are wrong.
                 token.literal = "";
                 token.tokenType = .Eof;
             },
@@ -202,7 +208,7 @@ pub const Lexer = struct {
 
         if (self.character == '\n') {
             self.lineNumber += 1;
-            self.charPosition = 1;
+            self.charPosition = 0;
         } else {
             self.charPosition += 1;
         }
