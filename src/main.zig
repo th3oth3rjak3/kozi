@@ -4,10 +4,6 @@
 
 const std = @import("std");
 const builtin = @import("builtin");
-const vm = @import("vm.zig");
-const compiler = @import("compiler.zig");
-const disassembler = @import("disassembler.zig");
-const op = @import("opcodes.zig");
 
 var debugAllocator = std.heap.DebugAllocator(.{}).init;
 
@@ -48,8 +44,6 @@ pub fn main() !void {
     const args = try std.process.argsAlloc(mem.allocator);
     defer std.process.argsFree(mem.allocator, args);
 
-    std.debug.print("{}", .{vm});
-
     // if we have args, run file
     if (args.len > 1) {
         // try runFile(mem.allocator, args[1]);
@@ -59,8 +53,9 @@ pub fn main() !void {
 }
 
 test "run all tests" {
-    _ = vm;
-    _ = compiler;
-    _ = disassembler;
-    _ = op;
+    _ = @import("vm.zig");
+    _ = @import("compiler.zig");
+    _ = @import("disassembler.zig");
+    _ = @import("opcodes.zig");
+    _ = @import("scanner.zig");
 }

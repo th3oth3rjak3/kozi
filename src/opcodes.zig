@@ -9,16 +9,4 @@ pub const Op = enum(u8) {
     Pop,
     /// Return from a function.
     Return,
-
-    const Self = @This();
-
-    /// value gets the u8 representation of the enum.
-    pub inline fn value(comptime self: Self) u8 {
-        return @intFromEnum(self);
-    }
 };
-
-test "Op.value() should return u8" {
-    const ValueType = @TypeOf(Op.Return.value());
-    try expect(ValueType == u8);
-}
