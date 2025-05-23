@@ -156,8 +156,8 @@ pub const TokenType = enum(u8) {
 /// Token is an internal representation of source code
 /// used for parsing.
 pub const Token = struct {
-    /// tokenType is the internal type of the token, e.g.: class, fun, etc.
-    tokenType: TokenType,
+    /// token_type is the internal type of the token, e.g.: class, fun, etc.
+    token_type: TokenType,
     /// lexeme is the string representation of the token.
     lexeme: []const u8,
     /// line is the source code line number where the token
@@ -183,21 +183,21 @@ pub const Scanner = struct {
     line: usize,
     /// column is the current column in the source code.
     column: usize,
-    /// lineStart tracks the byte position where the current line starts
-    lineStart: usize,
+    /// line_start tracks the byte position where the current line starts
+    line_start: usize,
 
     const Self = @This();
 
     /// new creates a new scanner using the provided
     /// source code.
-    pub fn new(sourceCode: []const u8) Scanner {
+    pub fn new(source_code: []const u8) Scanner {
         return .{
-            .source = sourceCode,
+            .source = source_code,
             .start = 0,
             .current = 0,
             .line = 1,
             .column = 1,
-            .lineStart = 0,
+            .line_start = 0,
         };
     }
 
@@ -217,9 +217,9 @@ pub const Scanner = struct {
         }
 
         self.start = self.current;
-        const startColumn = self.column;
+        const start_column = self.column;
 
-        const codePoint = self.peekCodepoint() catch {
+        const codepoint = self.peekCodepoint() catch {
             return self.makeError(ScanError.ErrorKind.InvalidUtf8, "Invalid UTF-8 sequence", null);
         };
 
@@ -227,37 +227,34 @@ pub const Scanner = struct {
             return self.makeError(ScanError.ErrorKind.InvalidUtf8, "Invalid UTF-8 sequence", null);
         };
 
-        if (isAlphaUnicode(codePoint)) {
+        if (isAlphaUnicode(codepoint)) {
             return self.identifier();
         }
-        if (isDigit(codePoint)) {
+        if (isDigit(codepoint)) {
             return self.number();
         }
 
-        if (codePoint <= 127) {
-            const ch = @as(u8, @intCast(codePoint));
+        if (codepoint <= 127) {
+            const ch = @as(u8, @intCast(codepoint));
             switch (ch) {
-                '(' => return ScanResult.newToken(self.makeTokenWithColumn(TokenType.LeftParen, startColumn)),
-                ')' => return ScanResult.newToken(self.makeTokenWithColumn(TokenType.RightParen, startColumn)),
-                '{' => return ScanResult.newToken(self.makeTokenWithColumn(
-                    TokenType.LeftBrace,
-                    startColumn
-                )),
-                '}' => return ScanResult.newToken(self.makeTokenWithColumn(TokenType.RightBrace, startColumn)),
-                '[' => return ScanResult.newToken(self.makeTokenWithColumn(TokenType.LeftBracket, startColumn)),
-                ']' => return ScanResult.newToken(self.makeTokenWithColumn(TokenType.RightBracket, startColumn)),
-                ',' => return ScanResult.newToken(self.makeTokenWithColumn(TokenType.Comma, startColumn)),
-                '.' => return ScanResult.newToken(self.makeTokenWithColumn(TokenType.Period, startColumn)),
-                ';' => return ScanResult.newToken(self.makeTokenWithColumn(TokenType.Semicolon, startColumn)),
+                '(' => return ScanResult.newToken(self.makeTokenWithColumn(TokenType.LeftParen, start_column)),
+                ')' => return ScanResult.newToken(self.makeTokenWithColumn(TokenType.RightParen, start_column)),
+                '{' => return ScanResult.newToken(self.makeTokenWithColumn(TokenType.LeftBrace, start_column)),
+                '}' => return ScanResult.newToken(self.makeTokenWithColumn(TokenType.RightBrace, start_column)),
+                '[' => return ScanResult.newToken(self.makeTokenWithColumn(TokenType.LeftBracket, start_column)),
+                ']' => return ScanResult.newToken(self.makeTokenWithColumn(TokenType.RightBracket, start_column)),
+                ',' => return ScanResult.newToken(self.makeTokenWithColumn(TokenType.Comma, start_column)),
+                '.' => return ScanResult.newToken(self.makeTokenWithColumn(TokenType.Period, start_column)),
+                ';' => return ScanResult.newToken(self.makeTokenWithColumn(TokenType.Semicolon, start_column)),
                 '+' => {
                     const nextCp = self.peekCodepoint() catch 0;
                     if (nextCp == '=') {
                         self.advanceCodepoint() catch {
                             return self.makeError(ScanError.ErrorKind.InvalidUtf8, "Invalid UTF-8 sequence", null);
                         };
-                        return ScanResult.newToken(self.makeTokenWithColumn(TokenType.PlusEqual, startColumn));
+                        return ScanResult.newToken(self.makeTokenWithColumn(TokenType.PlusEqual, start_column));
                     } else {
-                        return ScanResult.newToken(self.makeTokenWithColumn(TokenType.Plus, startColumn));
+                        return ScanResult.newToken(self.makeTokenWithColumn(TokenType.Plus, start_column));
                     }
                 },
                 '-' => {
@@ -266,9 +263,9 @@ pub const Scanner = struct {
                         self.advanceCodepoint() catch {
                             return self.makeError(ScanError.ErrorKind.InvalidUtf8, "Invalid UTF-8 sequence", null);
                         };
-                        return ScanResult.newToken(self.makeTokenWithColumn(TokenType.MinusEqual, startColumn));
+                        return ScanResult.newToken(self.makeTokenWithColumn(TokenType.MinusEqual, start_column));
                     } else {
-                        return ScanResult.newToken(self.makeTokenWithColumn(TokenType.Minus, startColumn));
+                        return ScanResult.newToken(self.makeTokenWithColumn(TokenType.Minus, start_column));
                     }
                 },
                 '*' => {
@@ -277,9 +274,9 @@ pub const Scanner = struct {
                         self.advanceCodepoint() catch {
                             return self.makeError(ScanError.ErrorKind.InvalidUtf8, "Invalid UTF-8 sequence", null);
                         };
-                        return ScanResult.newToken(self.makeTokenWithColumn(TokenType.StarEqual, startColumn));
+                        return ScanResult.newToken(self.makeTokenWithColumn(TokenType.StarEqual, start_column));
                     } else {
-                        return ScanResult.newToken(self.makeTokenWithColumn(TokenType.Star, startColumn));
+                        return ScanResult.newToken(self.makeTokenWithColumn(TokenType.Star, start_column));
                     }
                 },
                 '/' => {
@@ -288,9 +285,9 @@ pub const Scanner = struct {
                         self.advanceCodepoint() catch {
                             return self.makeError(ScanError.ErrorKind.InvalidUtf8, "Invalid UTF-8 sequence", null);
                         };
-                        return ScanResult.newToken(self.makeTokenWithColumn(TokenType.SlashEqual, startColumn));
+                        return ScanResult.newToken(self.makeTokenWithColumn(TokenType.SlashEqual, start_column));
                     } else {
-                        return ScanResult.newToken(self.makeTokenWithColumn(TokenType.Slash, startColumn));
+                        return ScanResult.newToken(self.makeTokenWithColumn(TokenType.Slash, start_column));
                     }
                 },
                 '!' => {
@@ -299,9 +296,9 @@ pub const Scanner = struct {
                         self.advanceCodepoint() catch {
                             return self.makeError(ScanError.ErrorKind.InvalidUtf8, "Invalid UTF-8 sequence", null);
                         };
-                        return ScanResult.newToken(self.makeTokenWithColumn(TokenType.BangEqual, startColumn));
+                        return ScanResult.newToken(self.makeTokenWithColumn(TokenType.BangEqual, start_column));
                     } else {
-                        return ScanResult.newToken(self.makeTokenWithColumn(TokenType.Bang, startColumn));
+                        return ScanResult.newToken(self.makeTokenWithColumn(TokenType.Bang, start_column));
                     }
                 },
                 '=' => {
@@ -310,9 +307,9 @@ pub const Scanner = struct {
                         self.advanceCodepoint() catch {
                             return self.makeError(ScanError.ErrorKind.InvalidUtf8, "Invalid UTF-8 sequence", null);
                         };
-                        return ScanResult.newToken(self.makeTokenWithColumn(TokenType.EqualEqual, startColumn));
+                        return ScanResult.newToken(self.makeTokenWithColumn(TokenType.EqualEqual, start_column));
                     } else {
-                        return ScanResult.newToken(self.makeTokenWithColumn(TokenType.Equal, startColumn));
+                        return ScanResult.newToken(self.makeTokenWithColumn(TokenType.Equal, start_column));
                     }
                 },
                 '>' => {
@@ -321,9 +318,9 @@ pub const Scanner = struct {
                         self.advanceCodepoint() catch {
                             return self.makeError(ScanError.ErrorKind.InvalidUtf8, "Invalid UTF-8 sequence", null);
                         };
-                        return ScanResult.newToken(self.makeTokenWithColumn(TokenType.GreaterEqual, startColumn));
+                        return ScanResult.newToken(self.makeTokenWithColumn(TokenType.GreaterEqual, start_column));
                     } else {
-                        return ScanResult.newToken(self.makeTokenWithColumn(TokenType.Greater, startColumn));
+                        return ScanResult.newToken(self.makeTokenWithColumn(TokenType.Greater, start_column));
                     }
                 },
                 '<' => {
@@ -332,16 +329,16 @@ pub const Scanner = struct {
                         self.advanceCodepoint() catch {
                             return self.makeError(ScanError.ErrorKind.InvalidUtf8, "Invalid UTF-8 sequence", null);
                         };
-                        return ScanResult.newToken(self.makeTokenWithColumn(TokenType.LessEqual, startColumn));
+                        return ScanResult.newToken(self.makeTokenWithColumn(TokenType.LessEqual, start_column));
                     } else {
-                        return ScanResult.newToken(self.makeTokenWithColumn(TokenType.Less, startColumn));
+                        return ScanResult.newToken(self.makeTokenWithColumn(TokenType.Less, start_column));
                     }
                 },
                 '"' => return self.string(),
-                else => return self.makeError(ScanError.ErrorKind.UnexpectedCharacter, "Unexpected character", codePoint),
+                else => return self.makeError(ScanError.ErrorKind.UnexpectedCharacter, "Unexpected character", codepoint),
             }
         } else {
-            return self.makeError(ScanError.ErrorKind.UnexpectedCharacter, "Unexpected Unicode character", codePoint);
+            return self.makeError(ScanError.ErrorKind.UnexpectedCharacter, "Unexpected Unicode character", codepoint);
         }
     }
 
@@ -355,36 +352,36 @@ pub const Scanner = struct {
     }
 
     /// makeError generates a new error variant when scanning fails.
-    fn makeError(self: *Self, kind: ScanError.ErrorKind, message: []const u8, codePoint: ?u21) ScanResult {
+    fn makeError(self: *Self, kind: ScanError.ErrorKind, message: []const u8, codepoint: ?u21) ScanResult {
         return ScanResult.newError(ScanError{
             .kind = kind,
             .line = self.line,
             .column = self.column,
             .message = message,
-            .codepoint = codePoint,
+            .codepoint = codepoint,
         });
     }
 
     /// makeTokenWithColumn creates a token with explicit column positioning.
-    fn makeTokenWithColumn(self: *Self, tokenType: TokenType, column: usize) Token {
+    fn makeTokenWithColumn(self: *Self, token_type: TokenType, column: usize) Token {
         const lexeme = self.source[self.start..self.current];
         return .{
             .lexeme = lexeme,
             .line = self.line,
             .column = column,
-            .tokenType = tokenType,
+            .token_type = token_type,
         };
     }
 
     /// makeStringToken creates a token specifically for TokenType.String
     /// in order to strip off the surrounding quotes.
-    fn makeStringToken(self: *Self, startColumn: usize) Token {
+    fn makeStringToken(self: *Self, start_column: usize) Token {
         const lexeme = self.source[(self.start + 1)..(self.current - 1)];
         return .{
             .lexeme = lexeme,
             .line = self.line,
-            .column = startColumn,
-            .tokenType = TokenType.String,
+            .column = start_column,
+            .token_type = TokenType.String,
         };
     }
 
@@ -392,9 +389,9 @@ pub const Scanner = struct {
     /// because they aren't considered significant in this language.
     fn skipWhitespace(self: *Self) void {
         while (!self.isAtEnd()) {
-            const codePoint = self.peekCodepoint() catch break;
-            if (codePoint <= 127) {
-                const ch: u8 = @intCast(codePoint);
+            const codepoint = self.peekCodepoint() catch break;
+            if (codepoint <= 127) {
+                const ch: u8 = @intCast(codepoint);
                 switch (ch) {
                     ' ', '\t', '\r' => {
                         self.advanceCodepoint() catch break;
@@ -404,12 +401,12 @@ pub const Scanner = struct {
                         self.line += 1;
                     },
                     '/' => {
-                        const nextCp = self.peekNextCodepoint() catch break;
-                        if (nextCp == '/') {
+                        const next_cp = self.peekNextCodepoint() catch break;
+                        if (next_cp == '/') {
                             _ = self.advanceCodepoint() catch break; // consume first '/'
                             while (!self.isAtEnd()) {
-                                const commentCp = self.peekCodepoint() catch break;
-                                if (commentCp == '\n') break;
+                                const comment_cp = self.peekCodepoint() catch break;
+                                if (comment_cp == '\n') break;
                                 _ = self.advanceCodepoint() catch break;
                             }
                         } else {
@@ -418,7 +415,7 @@ pub const Scanner = struct {
                     },
                     else => break,
                 }
-            } else if (isWhitespaceUnicode(codePoint)) {
+            } else if (isWhitespaceUnicode(codepoint)) {
                 // Handle Unicode whitespace
                 _ = self.advanceCodepoint() catch break;
             } else {
@@ -540,7 +537,7 @@ pub const Scanner = struct {
 
     /// string creates a string token at the current position with Unicode support.
     fn string(self: *Self) ScanResult {
-        const startColumn = self.column - 1; // Account for opening quote
+        const start_column = self.column - 1; // Account for opening quote
 
         while (!self.isAtEnd()) {
             const codepoint = self.peekCodepoint() catch {
@@ -551,7 +548,7 @@ pub const Scanner = struct {
 
             if (codepoint == '\n') {
                 self.line += 1;
-                self.lineStart = self.current;
+                self.line_start = self.current;
                 self.column = 1;
             }
 
@@ -565,11 +562,11 @@ pub const Scanner = struct {
             return self.makeError(ScanError.ErrorKind.UnterminatedString, "Unterminated string literal", null);
         }
 
-        const closingQuote = self.peekCodepoint() catch {
+        const closing_quote = self.peekCodepoint() catch {
             return self.makeError(ScanError.ErrorKind.InvalidUtf8, "Invalid UTF-8 at end of string", null);
         };
 
-        if (closingQuote != '"') {
+        if (closing_quote != '"') {
             return self.makeError(ScanError.ErrorKind.UnterminatedString, "Unterminated string literal", null);
         }
 
@@ -578,7 +575,7 @@ pub const Scanner = struct {
             return self.makeError(ScanError.ErrorKind.InvalidUtf8, "Invalid UTF-8 after string", null);
         };
 
-        return ScanResult.newToken(self.makeStringToken(startColumn));
+        return ScanResult.newToken(self.makeStringToken(start_column));
     }
 
     /// number creates a number token.
@@ -595,16 +592,16 @@ pub const Scanner = struct {
             };
         }
 
-        const periodCp = self.peekCodepoint() catch 0;
-        if (periodCp != '.') {
+        const period_cp = self.peekCodepoint() catch 0;
+        if (period_cp != '.') {
             return ScanResult.newToken(self.makeTokenWithColumn(TokenType.Number, self.column));
         }
 
-        const nextCp = self.peekNextCodepoint() catch 0;
-        if (!isDigit(nextCp)) {
+        const next_cp = self.peekNextCodepoint() catch 0;
+        if (!isDigit(next_cp)) {
             // we assume that we have a period but no trailing numbers
             // which is invalid syntax.
-            return self.makeError(ScanError.ErrorKind.InvalidUtf8, "Invalid number format", periodCp);
+            return self.makeError(ScanError.ErrorKind.InvalidUtf8, "Invalid number format", period_cp);
         }
 
         // Advance over the period.
@@ -630,10 +627,10 @@ pub const Scanner = struct {
     /// identifier handles creation of all other identifier tokens.
     fn identifier(self: *Self) ScanResult {
         while (!self.isAtEnd()) {
-            const codePoint = self.peekCodepoint() catch {
+            const codepoint = self.peekCodepoint() catch {
                 return self.makeError(ScanError.ErrorKind.InvalidUtf8, "Invalid UTF-8 sequence", null);
             };
-            if (isAlphaUnicode(codePoint) or isDigit(codePoint)) {
+            if (isAlphaUnicode(codepoint) or isDigit(codepoint)) {
                 self.advanceCodepoint() catch {
                     return self.makeError(ScanError.ErrorKind.InvalidUtf8, "Invalid UTF-8 sequence", null);
                 };
@@ -642,8 +639,8 @@ pub const Scanner = struct {
             }
         }
 
-        const tokenType = self.identifierType();
-        const token = self.makeTokenWithColumn(tokenType, self.start);
+        const token_type = self.identifierType();
+        const token = self.makeTokenWithColumn(token_type, self.start);
         return ScanResult.newToken(token);
     }
 
@@ -733,7 +730,7 @@ test "scanToken should create TokenType.LeftParen" {
     var scanner = Scanner.new("(");
     const result = scanner.scanToken();
     const token = result.unwrap();
-    try expect(token.tokenType == TokenType.LeftParen);
+    try expect(token.token_type == TokenType.LeftParen);
     try expect(token.line == 1);
     try expect(std.mem.eql(u8, "(", token.lexeme));
 }
@@ -742,7 +739,7 @@ test "scanToken should create TokenType.RightParen" {
     var scanner = Scanner.new(")");
     const result = scanner.scanToken();
     const token = result.unwrap();
-    try expect(token.tokenType == TokenType.RightParen);
+    try expect(token.token_type == TokenType.RightParen);
     try expect(token.line == 1);
     try expect(std.mem.eql(u8, ")", token.lexeme));
 }
@@ -751,7 +748,7 @@ test "scanToken should create TokenType.LeftBrace" {
     var scanner = Scanner.new("{");
     const result = scanner.scanToken();
     const token = result.unwrap();
-    try expect(token.tokenType == TokenType.LeftBrace);
+    try expect(token.token_type == TokenType.LeftBrace);
     try expect(token.line == 1);
     try expect(std.mem.eql(u8, "{", token.lexeme));
 }
@@ -760,7 +757,7 @@ test "scanToken should create TokenType.RightBrace" {
     var scanner = Scanner.new("}");
     const result = scanner.scanToken();
     const token = result.unwrap();
-    try expect(token.tokenType == TokenType.RightBrace);
+    try expect(token.token_type == TokenType.RightBrace);
     try expect(token.line == 1);
     try expect(std.mem.eql(u8, "}", token.lexeme));
 }
@@ -770,7 +767,7 @@ test "scanToken should create TokenType.LeftBracket" {
     const result = scanner.scanToken();
     const token = result.unwrap();
 
-    try expect(token.tokenType == TokenType.LeftBracket);
+    try expect(token.token_type == TokenType.LeftBracket);
     try expect(token.line == 1);
     try expect(std.mem.eql(u8, "[", token.lexeme));
 }
@@ -780,7 +777,7 @@ test "scanToken should create TokenType.RightBracket" {
     const result = scanner.scanToken();
     const token = result.unwrap();
 
-    try expect(token.tokenType == TokenType.RightBracket);
+    try expect(token.token_type == TokenType.RightBracket);
     try expect(token.line == 1);
     try expect(std.mem.eql(u8, "]", token.lexeme));
 }
@@ -790,7 +787,7 @@ test "scanToken should create TokenType.Comma" {
     const result = scanner.scanToken();
     const token = result.unwrap();
 
-    try expect(token.tokenType == TokenType.Comma);
+    try expect(token.token_type == TokenType.Comma);
     try expect(token.line == 1);
     try expect(std.mem.eql(u8, ",", token.lexeme));
 }
@@ -799,7 +796,7 @@ test "scanToken should create TokenType.Period" {
     var scanner = Scanner.new(".");
     const result = scanner.scanToken();
     const token = result.unwrap();
-    try expect(token.tokenType == TokenType.Period);
+    try expect(token.token_type == TokenType.Period);
     try expect(token.line == 1);
     try expect(std.mem.eql(u8, ".", token.lexeme));
 }
@@ -809,7 +806,7 @@ test "scanToken should create TokenType.Semicolon" {
     const result = scanner.scanToken();
     const token = result.unwrap();
 
-    try expect(token.tokenType == TokenType.Semicolon);
+    try expect(token.token_type == TokenType.Semicolon);
     try expect(token.line == 1);
     try expect(std.mem.eql(u8, ";", token.lexeme));
 }
@@ -819,7 +816,7 @@ test "scanToken should create TokenType.Plus" {
     const result = scanner.scanToken();
     const token = result.unwrap();
 
-    try expect(token.tokenType == TokenType.Plus);
+    try expect(token.token_type == TokenType.Plus);
     try expect(token.line == 1);
     try expect(std.mem.eql(u8, "+", token.lexeme));
 }
@@ -829,7 +826,7 @@ test "scanToken should create TokenType.PlusEqual" {
     const result = scanner.scanToken();
     const token = result.unwrap();
 
-    try expect(token.tokenType == TokenType.PlusEqual);
+    try expect(token.token_type == TokenType.PlusEqual);
     try expect(token.line == 1);
     try expect(std.mem.eql(u8, "+=", token.lexeme));
 }
@@ -839,7 +836,7 @@ test "scanToken should create TokenType.Minus" {
     const result = scanner.scanToken();
     const token = result.unwrap();
 
-    try expect(token.tokenType == TokenType.Minus);
+    try expect(token.token_type == TokenType.Minus);
     try expect(token.line == 1);
     try expect(std.mem.eql(u8, "-", token.lexeme));
 }
@@ -848,7 +845,7 @@ test "scanToken should create TokenType.MinusEqual" {
     var scanner = Scanner.new("-=");
     const result = scanner.scanToken();
     const token = result.unwrap();
-    try expect(token.tokenType == TokenType.MinusEqual);
+    try expect(token.token_type == TokenType.MinusEqual);
     try expect(token.line == 1);
     try expect(std.mem.eql(u8, "-=", token.lexeme));
 }
@@ -857,7 +854,7 @@ test "scanToken should create TokenType.Star" {
     var scanner = Scanner.new("*");
     const result = scanner.scanToken();
     const token = result.unwrap();
-    try expect(token.tokenType == TokenType.Star);
+    try expect(token.token_type == TokenType.Star);
     try expect(token.line == 1);
     try expect(std.mem.eql(u8, "*", token.lexeme));
 }
@@ -866,7 +863,7 @@ test "scanToken should create TokenType.StarEqual" {
     var scanner = Scanner.new("*=");
     const result = scanner.scanToken();
     const token = result.unwrap();
-    try expect(token.tokenType == TokenType.StarEqual);
+    try expect(token.token_type == TokenType.StarEqual);
     try expect(token.line == 1);
     try expect(std.mem.eql(u8, "*=", token.lexeme));
 }
@@ -875,7 +872,7 @@ test "scanToken should create TokenType.Slash" {
     var scanner = Scanner.new("/");
     const result = scanner.scanToken();
     const token = result.unwrap();
-    try expect(token.tokenType == TokenType.Slash);
+    try expect(token.token_type == TokenType.Slash);
     try expect(token.line == 1);
     try expect(std.mem.eql(u8, "/", token.lexeme));
 }
@@ -884,7 +881,7 @@ test "scanToken should create TokenType.SlashEqual" {
     var scanner = Scanner.new("/=");
     const result = scanner.scanToken();
     const token = result.unwrap();
-    try expect(token.tokenType == TokenType.SlashEqual);
+    try expect(token.token_type == TokenType.SlashEqual);
     try expect(token.line == 1);
     try expect(std.mem.eql(u8, "/=", token.lexeme));
 }
@@ -893,7 +890,7 @@ test "scanToken should create TokenType.Greater" {
     var scanner = Scanner.new(">");
     const result = scanner.scanToken();
     const token = result.unwrap();
-    try expect(token.tokenType == TokenType.Greater);
+    try expect(token.token_type == TokenType.Greater);
     try expect(token.line == 1);
     try expect(std.mem.eql(u8, ">", token.lexeme));
 }
@@ -902,7 +899,7 @@ test "scanToken should create TokenType.GreaterEqual" {
     var scanner = Scanner.new(">=");
     const result = scanner.scanToken();
     const token = result.unwrap();
-    try expect(token.tokenType == TokenType.GreaterEqual);
+    try expect(token.token_type == TokenType.GreaterEqual);
     try expect(token.line == 1);
     try expect(std.mem.eql(u8, ">=", token.lexeme));
 }
@@ -911,7 +908,7 @@ test "scanToken should create TokenType.Less" {
     var scanner = Scanner.new("<");
     const result = scanner.scanToken();
     const token = result.unwrap();
-    try expect(token.tokenType == TokenType.Less);
+    try expect(token.token_type == TokenType.Less);
     try expect(token.line == 1);
     try expect(std.mem.eql(u8, "<", token.lexeme));
 }
@@ -920,7 +917,7 @@ test "scanToken should create TokenType.LessEqual" {
     var scanner = Scanner.new("<=");
     const result = scanner.scanToken();
     const token = result.unwrap();
-    try expect(token.tokenType == TokenType.LessEqual);
+    try expect(token.token_type == TokenType.LessEqual);
     try expect(token.line == 1);
     try expect(std.mem.eql(u8, "<=", token.lexeme));
 }
@@ -929,7 +926,7 @@ test "scanToken should create TokenType.Bang" {
     var scanner = Scanner.new("!");
     const result = scanner.scanToken();
     const token = result.unwrap();
-    try expect(token.tokenType == TokenType.Bang);
+    try expect(token.token_type == TokenType.Bang);
     try expect(token.line == 1);
     try expect(std.mem.eql(u8, "!", token.lexeme));
 }
@@ -938,7 +935,7 @@ test "scanToken should create TokenType.BangEqual" {
     var scanner = Scanner.new("!=");
     const result = scanner.scanToken();
     const token = result.unwrap();
-    try expect(token.tokenType == TokenType.BangEqual);
+    try expect(token.token_type == TokenType.BangEqual);
     try expect(token.line == 1);
     try expect(std.mem.eql(u8, "!=", token.lexeme));
 }
@@ -956,8 +953,8 @@ test "isDigit should handle all numeric digits" {
         try expect(Scanner.isDigit(d));
     }
 
-    const nonDigits: [10]u8 = .{ 'n', 'o', 't', ' ', 'a', 'd', 'i', 'g', 'i', 't' };
-    for (nonDigits) |n| {
+    const non_digits: [10]u8 = .{ 'n', 'o', 't', ' ', 'a', 'd', 'i', 'g', 'i', 't' };
+    for (non_digits) |n| {
         try expect(!Scanner.isDigit(n));
     }
 }
@@ -998,21 +995,21 @@ test "number function should scan numbers" {
     var token = result.unwrap();
     try expect(std.mem.eql(u8, token.lexeme, "123"));
     try expect(token.line == 1);
-    try expect(token.tokenType == TokenType.Number);
+    try expect(token.token_type == TokenType.Number);
 
     scanner = Scanner.new("123.0");
     result = scanner.scanToken();
     token = result.unwrap();
     try expect(std.mem.eql(u8, token.lexeme, "123.0"));
     try expect(token.line == 1);
-    try expect(token.tokenType == TokenType.Number);
+    try expect(token.token_type == TokenType.Number);
 
     scanner = Scanner.new("123.456 other");
     result = scanner.scanToken();
     token = result.unwrap();
     try expect(std.mem.eql(u8, token.lexeme, "123.456"));
     try expect(token.line == 1);
-    try expect(token.tokenType == TokenType.Number);
+    try expect(token.token_type == TokenType.Number);
 
     scanner = Scanner.new("123."); // invalid number
     result = scanner.scanToken();
@@ -1025,94 +1022,94 @@ test "string function should scan single line strings" {
     const token = result.unwrap();
     try expect(std.mem.eql(u8, "I am a string.", token.lexeme));
     try expect(token.line == 1);
-    try expect(token.tokenType == TokenType.String);
+    try expect(token.token_type == TokenType.String);
 }
 
 test "identifier function should handle keywords and other identifiers" {
     var scanner = Scanner.new("and");
     var result = scanner.scanToken();
     var token = result.unwrap();
-    try expect(token.tokenType == TokenType.And);
+    try expect(token.token_type == TokenType.And);
 
     scanner = Scanner.new("class");
     result = scanner.scanToken();
     token = result.unwrap();
-    try expect(token.tokenType == TokenType.Class);
+    try expect(token.token_type == TokenType.Class);
 
     scanner = Scanner.new("else");
     result = scanner.scanToken();
     token = result.unwrap();
-    try expect(token.tokenType == TokenType.Else);
+    try expect(token.token_type == TokenType.Else);
 
     scanner = Scanner.new("false");
     result = scanner.scanToken();
     token = result.unwrap();
-    try expect(token.tokenType == TokenType.False);
+    try expect(token.token_type == TokenType.False);
 
     scanner = Scanner.new("for");
     result = scanner.scanToken();
     token = result.unwrap();
-    try expect(token.tokenType == TokenType.For);
+    try expect(token.token_type == TokenType.For);
 
     scanner = Scanner.new("fun");
     result = scanner.scanToken();
     token = result.unwrap();
-    try expect(token.tokenType == TokenType.Fun);
+    try expect(token.token_type == TokenType.Fun);
 
     scanner = Scanner.new("if");
     result = scanner.scanToken();
     token = result.unwrap();
-    try expect(token.tokenType == TokenType.If);
+    try expect(token.token_type == TokenType.If);
 
     scanner = Scanner.new("nil");
     result = scanner.scanToken();
     token = result.unwrap();
-    try expect(token.tokenType == TokenType.Nil);
+    try expect(token.token_type == TokenType.Nil);
 
     scanner = Scanner.new("or");
     result = scanner.scanToken();
     token = result.unwrap();
-    try expect(token.tokenType == TokenType.Or);
+    try expect(token.token_type == TokenType.Or);
 
     scanner = Scanner.new("print");
     result = scanner.scanToken();
     token = result.unwrap();
-    try expect(token.tokenType == TokenType.Print);
+    try expect(token.token_type == TokenType.Print);
 
     scanner = Scanner.new("return");
     result = scanner.scanToken();
     token = result.unwrap();
-    try expect(token.tokenType == TokenType.Return);
+    try expect(token.token_type == TokenType.Return);
 
     scanner = Scanner.new("super");
     result = scanner.scanToken();
     token = result.unwrap();
-    try expect(token.tokenType == TokenType.Super);
+    try expect(token.token_type == TokenType.Super);
 
     scanner = Scanner.new("this");
     result = scanner.scanToken();
     token = result.unwrap();
-    try expect(token.tokenType == TokenType.This);
+    try expect(token.token_type == TokenType.This);
 
     scanner = Scanner.new("true");
     result = scanner.scanToken();
     token = result.unwrap();
-    try expect(token.tokenType == TokenType.True);
+    try expect(token.token_type == TokenType.True);
 
     scanner = Scanner.new("let");
     result = scanner.scanToken();
     token = result.unwrap();
-    try expect(token.tokenType == TokenType.Let);
+    try expect(token.token_type == TokenType.Let);
 
     scanner = Scanner.new("while");
     result = scanner.scanToken();
     token = result.unwrap();
-    try expect(token.tokenType == TokenType.While);
+    try expect(token.token_type == TokenType.While);
 
     scanner = Scanner.new("myThing123");
     result = scanner.scanToken();
     token = result.unwrap();
-    try expect(token.tokenType == TokenType.Identifier);
+    try expect(token.token_type == TokenType.Identifier);
     try expect(std.mem.eql(u8, token.lexeme, "myThing123"));
 }
 
@@ -1123,16 +1120,16 @@ test "unicode identifier scanning" {
 
     const result1 = scanner.scanToken();
     const token1 = result1.unwrap();
-    try expect(token1.tokenType == TokenType.Identifier);
+    try expect(token1.token_type == TokenType.Identifier);
     try expect(std.mem.eql(u8, token1.lexeme, "变量"));
 
     const result2 = scanner.scanToken();
     const token2 = result2.unwrap();
-    try expect(token2.tokenType == TokenType.Equal);
+    try expect(token2.token_type == TokenType.Equal);
 
     const result3 = scanner.scanToken();
     const token3 = result3.unwrap();
-    try expect(token3.tokenType == TokenType.Number);
+    try expect(token3.token_type == TokenType.Number);
     try expect(std.mem.eql(u8, token3.lexeme, "42"));
 }
 
@@ -1142,7 +1139,7 @@ test "unicode string literals" {
 
     const result = scanner.scanToken();
     const token = result.unwrap();
-    try expect(token.tokenType == TokenType.String);
+    try expect(token.token_type == TokenType.String);
     try expect(std.mem.eql(u8, token.lexeme, "Hello, 世界! 🌍"));
 }
 
@@ -1151,14 +1148,14 @@ test "unicode whitespace handling" {
     var scanner = Scanner.new(source);
 
     const result1 = scanner.scanToken();
-    try expect(result1.unwrap().tokenType == TokenType.Let);
+    try expect(result1.unwrap().token_type == TokenType.Let);
 
     const result2 = scanner.scanToken();
-    try expect(result2.unwrap().tokenType == TokenType.Identifier);
+    try expect(result2.unwrap().token_type == TokenType.Identifier);
     try expect(std.mem.eql(u8, result2.unwrap().lexeme, "x"));
 
     const result3 = scanner.scanToken();
-    try expect(result3.unwrap().tokenType == TokenType.Equal);
+    try expect(result3.unwrap().token_type == TokenType.Equal);
 }
 
 // Tests for ScanResult pattern
@@ -1168,11 +1165,11 @@ test "scan result success" {
 
     const result1 = scanner.scanToken();
     try expect(result1.isOk());
-    try expect(result1.unwrap().tokenType == TokenType.Let);
+    try expect(result1.unwrap().token_type == TokenType.Let);
 
     const result2 = scanner.scanToken();
     try expect(result2.isOk());
-    try expect(result2.unwrap().tokenType == TokenType.Identifier);
+    try expect(result2.unwrap().token_type == TokenType.Identifier);
 }
 
 test "scan result error handling" {
@@ -1199,12 +1196,12 @@ test "unicode identifier scanning with result" {
     const result1 = scanner.scanToken();
     try expect(result1.isOk());
     const token1 = result1.unwrap();
-    try expect(token1.tokenType == TokenType.Identifier);
+    try expect(token1.token_type == TokenType.Identifier);
     try expect(std.mem.eql(u8, token1.lexeme, "变量"));
 
     const result2 = scanner.scanToken();
     try expect(result2.isOk());
-    try expect(result2.unwrap().tokenType == TokenType.Equal);
+    try expect(result2.unwrap().token_type == TokenType.Equal);
 }
 
 test "unterminated string error" {

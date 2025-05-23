@@ -4,8 +4,43 @@
 
 const std = @import("std");
 const builtin = @import("builtin");
+const virtual_machine = @import("virtual_machine.zig");
+const garbage_collector = @import("garbage_collector.zig");
+const compiler_file = @import("compiler.zig");
 
-var debugAllocator = std.heap.DebugAllocator(.{}).init;
+const GarbageCollector = garbage_collector.GarbageCollector;
+const VirtualMachine = virtual_machine.VirtualMachine;
+const Compiler = compiler_file.Compiler;
+const Tracer = garbage_collector.Tracer;
+
+var debug_allocator = std.heap.DebugAllocator(.{}).init;
+
+const Runtime = struct {
+    vm: VirtualMachine,
+    compiler: Compiler,
+
+    const Self = @This();
+
+    pub fn init(gc: *GarbageCollector) Runtime {
+        const vm = VirtualMachine.init(gc);
+        const compiler = Compiler.init();
+        return .{ .vm = vm, .compiler = compiler };
+    }
+
+    pub fn deinit(self: *Self) void {
+        self.vm.deinit();
+        self.compiler.deinit();
+    }
+
+    fn traceRootsWrapper(ctx: *anyopaque, tracer: *Tracer) anyerror!void {
+        const self: *VirtualMachine = @alignCast(@ptrCast(ctx));
+        return self.traceRoots(tracer);
+    }
+
+    pub fn setupGC(self: *Self, gc: *GarbageCollector) void {
+        gc.setTraceCallback(@as(*anyopaque, @ptrCast(&self.vm)), traceRootsWrapper);
+    }
+};
 
 /// getAllocator checks the current environment and produces the
 /// correct allocator for the program.
@@ -18,7 +53,7 @@ pub fn getAllocator() struct {
 
     return switch (builtin.mode) {
         .Debug, .ReleaseSafe => .{
-            .allocator = debugAllocator.allocator(),
+            .allocator = debug_allocator.allocator(),
             .is_debug = true,
         },
         .ReleaseFast, .ReleaseSmall => .{
@@ -32,7 +67,7 @@ pub fn main() !void {
     // Setup allocator and check for leaks in debug mode.
     const mem = getAllocator();
     defer if (mem.is_debug) {
-        const result = debugAllocator.deinit();
+        const result = debug_allocator.deinit();
         if (result == .leak) {
             std.debug.print("Memory leak detected!\n", .{});
         } else {
@@ -40,22 +75,56 @@ pub fn main() !void {
         }
     };
 
+    var gc = GarbageCollector.init(mem.allocator);
+    defer gc.deinit();
+
     // Read args from the command line.
     const args = try std.process.argsAlloc(mem.allocator);
     defer std.process.argsFree(mem.allocator, args);
 
     // if we have args, run file
-    if (args.len > 1) {
-        // try runFile(mem.allocator, args[1]);
+    if (args.len == 2) {
+        try runFile(&gc, args[1]);
+    } else if (args.len == 1) {
+        try runRepl(&gc);
     } else {
-        // try runRepl(mem.allocator);
+        const stderr = std.io.getStdErr().writer();
+        try stderr.print("Usage: kozi <path>", .{});
+        std.process.exit(1);
     }
 }
 
+fn runRepl(gc: *GarbageCollector) !void {
+    var runtime = Runtime.init(gc);
+    defer runtime.deinit();
+    runtime.setupGC(gc);
+
+    var buf: [512]u8 = undefined;
+    const stdin = std.io.getStdIn().reader();
+
+    std.debug.print("> ", .{});
+    const bytesRead = try stdin.read(buf[0..]);
+    if (bytesRead == 0) return; // EOF
+
+    const line = buf[0..bytesRead];
+    std.debug.print("You typed: {s}\n", .{line});
+}
+
+fn runFile(gc: *GarbageCollector, file_path: []const u8) !void {
+    const runtime = Runtime.init(gc);
+    defer runtime.deinit();
+    runtime.setupGC(gc);
+    _ = file_path;
+    @panic("TODO: finish runFile implementation.");
+}
+
 test "run all tests" {
-    _ = @import("vm.zig");
+    _ = @import("virtual_machine.zig");
     _ = @import("compiler.zig");
     _ = @import("disassembler.zig");
     _ = @import("opcodes.zig");
     _ = @import("scanner.zig");
+    _ = @import("object.zig");
+    _ = @import("context.zig");
+    _ = @import("garbage_collector.zig");
 }
