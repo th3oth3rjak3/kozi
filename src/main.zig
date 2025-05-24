@@ -7,13 +7,13 @@ const builtin = @import("builtin");
 const virtual_machine = @import("virtual_machine.zig");
 const garbage_collector = @import("garbage_collector.zig");
 const compiler_file = @import("compiler.zig");
-const object = @import("value.zig");
+const value = @import("value.zig");
 
 const GarbageCollector = garbage_collector.GarbageCollector;
 const VirtualMachine = virtual_machine.VirtualMachine;
 const Compiler = compiler_file.Compiler;
 const Tracer = garbage_collector.Tracer;
-const Object = object.Object;
+const Value = value.Value;
 
 var debug_allocator = std.heap.DebugAllocator(.{}).init;
 
@@ -35,15 +35,6 @@ const Runtime = struct {
     pub fn deinit(self: *Self) void {
         self.vm.deinit();
         self.compiler.deinit();
-    }
-
-    fn traceRoots(ctx: *anyopaque, tracer: *Tracer) anyerror!void {
-        const self: *VirtualMachine = @alignCast(@ptrCast(ctx));
-        return self.traceRoots(tracer);
-    }
-
-    pub fn setupGC(self: *Self, gc: *GarbageCollector) void {
-        gc.setTraceCallback(@as(*anyopaque, @ptrCast(&self.vm)), traceRoots);
     }
 };
 
@@ -102,7 +93,6 @@ pub fn main() !void {
 fn runRepl(gc: *GarbageCollector) !void {
     var runtime = Runtime.init(gc);
     defer runtime.deinit();
-    runtime.setupGC(gc);
 
     var buf: [512]u8 = undefined;
     const stdin = std.io.getStdIn().reader();
@@ -113,18 +103,14 @@ fn runRepl(gc: *GarbageCollector) !void {
 
     const line = buf[0..bytesRead];
     std.debug.print("You typed: {s}\n", .{line});
-    const str = try gc.allocateString(line);
+    _ = try gc.newString(line);
     std.debug.print("There are '{}' bytes allocated.\n", .{gc.bytes_allocated});
-    try runtime.vm.stack.append(Object{ .String = str });
-    try gc.forceGc();
-    _ = runtime.vm.stack.pop();
-    try gc.forceGc();
+    gc.collect();
 }
 
 fn runFile(gc: *GarbageCollector, file_path: []const u8) !void {
     var runtime = Runtime.init(gc);
     defer runtime.deinit();
-    runtime.setupGC(gc);
     _ = file_path;
     @panic("TODO: finish runFile implementation.");
 }

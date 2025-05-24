@@ -46,7 +46,7 @@ pub const GarbageCollector = struct {
 
     pub fn newString(self: *Self, value: []const u8) !Value {
         if (self.strings.get(value)) |v| {
-            return Value{.String = v };
+            return Value{ .String = v };
         }
 
         if (self.bytes_allocated > self.next_gc) {
@@ -57,11 +57,7 @@ pub const GarbageCollector = struct {
         self.bytes_allocated += owned.len;
         const str = try self.backing_allocator.create(String);
         str.* = .{
-            .header = .{
-                .marked = false,
-                .kind = .String,
-                .next = self.objects
-            },
+            .header = .{ .marked = false, .kind = .String, .next = self.objects },
             .data = owned,
         };
 
@@ -69,7 +65,7 @@ pub const GarbageCollector = struct {
         self.objects = @as(*Object, @ptrCast(str));
 
         try self.strings.put(value, str);
-        return Value{.String = str};
+        return Value{ .String = str };
     }
 
     pub fn collect(self: *Self) void {
@@ -88,7 +84,7 @@ pub const GarbageCollector = struct {
 
         if (builtin.mode == .Debug) {
             std.debug.print("GC collected {} bytes ({} -> {})\n", .{ before - after, before, after });
-            std.debug.print("Next GC scheduled at: {}\n", .{ self.next_gc });
+            std.debug.print("Next GC scheduled at: {}\n", .{self.next_gc});
         }
     }
 
@@ -167,8 +163,6 @@ pub const GarbageCollector = struct {
     }
 
     pub fn freeObject(self: *Self, obj: *Object) void {
-        std.debug.print("Freeing object at {}, kind = {}\n", .{ obj, obj.kind });
-
         switch (obj.kind) {
             .String => {
                 const ptr: *String = @ptrCast(obj);
@@ -184,7 +178,6 @@ pub const GarbageCollector = struct {
         }
     }
 };
-
 
 test "GarbageCollector basic string allocation and GC" {
     const expect = std.testing.expect;
