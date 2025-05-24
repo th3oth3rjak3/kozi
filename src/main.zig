@@ -7,11 +7,13 @@ const builtin = @import("builtin");
 const virtual_machine = @import("virtual_machine.zig");
 const garbage_collector = @import("garbage_collector.zig");
 const compiler_file = @import("compiler.zig");
+const object = @import("value.zig");
 
 const GarbageCollector = garbage_collector.GarbageCollector;
 const VirtualMachine = virtual_machine.VirtualMachine;
 const Compiler = compiler_file.Compiler;
 const Tracer = garbage_collector.Tracer;
+const Object = object.Object;
 
 var debug_allocator = std.heap.DebugAllocator(.{}).init;
 
@@ -24,7 +26,10 @@ const Runtime = struct {
     pub fn init(gc: *GarbageCollector) Runtime {
         const vm = VirtualMachine.init(gc);
         const compiler = Compiler.init();
-        return .{ .vm = vm, .compiler = compiler };
+        return .{
+            .vm = vm,
+            .compiler = compiler,
+        };
     }
 
     pub fn deinit(self: *Self) void {
@@ -32,13 +37,13 @@ const Runtime = struct {
         self.compiler.deinit();
     }
 
-    fn traceRootsWrapper(ctx: *anyopaque, tracer: *Tracer) anyerror!void {
+    fn traceRoots(ctx: *anyopaque, tracer: *Tracer) anyerror!void {
         const self: *VirtualMachine = @alignCast(@ptrCast(ctx));
         return self.traceRoots(tracer);
     }
 
     pub fn setupGC(self: *Self, gc: *GarbageCollector) void {
-        gc.setTraceCallback(@as(*anyopaque, @ptrCast(&self.vm)), traceRootsWrapper);
+        gc.setTraceCallback(@as(*anyopaque, @ptrCast(&self.vm)), traceRoots);
     }
 };
 
@@ -108,10 +113,16 @@ fn runRepl(gc: *GarbageCollector) !void {
 
     const line = buf[0..bytesRead];
     std.debug.print("You typed: {s}\n", .{line});
+    const str = try gc.allocateString(line);
+    std.debug.print("There are '{}' bytes allocated.\n", .{gc.bytes_allocated});
+    try runtime.vm.stack.append(Object{ .String = str });
+    try gc.forceGc();
+    _ = runtime.vm.stack.pop();
+    try gc.forceGc();
 }
 
 fn runFile(gc: *GarbageCollector, file_path: []const u8) !void {
-    const runtime = Runtime.init(gc);
+    var runtime = Runtime.init(gc);
     defer runtime.deinit();
     runtime.setupGC(gc);
     _ = file_path;
@@ -124,7 +135,7 @@ test "run all tests" {
     _ = @import("disassembler.zig");
     _ = @import("opcodes.zig");
     _ = @import("scanner.zig");
-    _ = @import("object.zig");
-    _ = @import("context.zig");
+    _ = @import("value.zig");
+    _ = @import("compiled_function.zig");
     _ = @import("garbage_collector.zig");
 }
