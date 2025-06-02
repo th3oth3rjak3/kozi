@@ -11,7 +11,6 @@ pub const ObjectKind = enum(u8) {
 pub const Object = struct {
     marked: bool,
     kind: ObjectKind,
-    next: ?*Object,
 };
 
 pub const String = struct {

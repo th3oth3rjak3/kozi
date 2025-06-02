@@ -11,9 +11,11 @@ const Object = value_file.Object;
 const Value = value_file.Value;
 const CompiledFunction = compiled_function.CompiledFunction;
 const GarbageCollector = garbage_collector.GarbageCollector;
+const ArrayList = std.ArrayList;
 
 pub const VirtualMachine = struct {
     gc: *GarbageCollector,
+    stack: ArrayList(Value),
     compiled_function: ?*CompiledFunction,
 
     const Self = @This();
@@ -21,12 +23,16 @@ pub const VirtualMachine = struct {
     pub fn init(gc: *GarbageCollector) VirtualMachine {
         return VirtualMachine{
             .gc = gc,
+            .stack = ArrayList(Value).init(gc.backing_allocator),
             .compiled_function = null,
         };
     }
 
     pub fn deinit(self: *Self) void {
-        _ = self;
+        self.stack.deinit();
+    }
+
+    pub fn push(self: *Self, value: Value) !void {
+        try self.stack.append(value);
     }
 };
-

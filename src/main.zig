@@ -26,6 +26,7 @@ const Runtime = struct {
     pub fn init(gc: *GarbageCollector) Runtime {
         const vm = VirtualMachine.init(gc);
         const compiler = Compiler.init();
+
         return .{
             .vm = vm,
             .compiler = compiler,
@@ -92,6 +93,7 @@ pub fn main() !void {
 
 fn runRepl(gc: *GarbageCollector) !void {
     var runtime = Runtime.init(gc);
+    gc.addVirtualMachine(&runtime.vm);
     defer runtime.deinit();
 
     var buf: [512]u8 = undefined;
@@ -104,12 +106,14 @@ fn runRepl(gc: *GarbageCollector) !void {
     const line = buf[0..bytesRead];
     std.debug.print("You typed: {s}\n", .{line});
     _ = try gc.newString(line);
+    // gc.*.bytes_allocated = 2000000;
     std.debug.print("There are '{}' bytes allocated.\n", .{gc.bytes_allocated});
     gc.collect();
 }
 
 fn runFile(gc: *GarbageCollector, file_path: []const u8) !void {
     var runtime = Runtime.init(gc);
+    gc.addVirtualMachine(&runtime.vm);
     defer runtime.deinit();
     _ = file_path;
     @panic("TODO: finish runFile implementation.");
