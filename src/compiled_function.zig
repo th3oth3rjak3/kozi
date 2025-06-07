@@ -32,8 +32,21 @@ pub const CompiledFunction = struct {
         self.bytecode.deinit();
     }
 
-    pub fn write(self: *Self, byte: u8, line: usize) !void {
+    pub fn addConstant(self: *Self, value: Value) !u16 {
+        try self.constants.append(value);
+        return @intCast(self.constants.items.len - 1);
+    }
+
+    pub fn writeByte(self: *Self, byte: u8, line: usize) !void {
         try self.bytecode.append(byte);
+        try self.lines.append(line);
+    }
+
+    pub fn writeShort(self: *Self, short: u16, line: usize) !void {
+        const high_byte: u8 = @intCast(short >> 4);
+        const low_byte: u8 = @intCast(short);
+        try self.writeByte(high_byte, line);
+        try self.writeByte(low_byte, line);
         try self.lines.append(line);
     }
 
@@ -55,7 +68,7 @@ test "CompiledFunction can write bytes" {
     var fun = CompiledFunction.init(std.testing.allocator);
     defer fun.deinit();
 
-    try fun.write(42, 1);
+    try fun.writeByte(42, 1);
     try std.testing.expectEqual(42, fun.bytecode.items[0]);
     try std.testing.expectEqual(1, fun.lines.items[0]);
 }

@@ -9,4 +9,6 @@ pub const Op = enum(u8) {
     Pop,
     /// Return from a function.
     Return,
+    /// Load the constant at the address specified in the following two bytes (u16)
+    Constant,
 };

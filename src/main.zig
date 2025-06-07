@@ -4,17 +4,23 @@
 
 const std = @import("std");
 const builtin = @import("builtin");
-const virtual_machine = @import("virtual_machine.zig");
-const compiler_file = @import("compiler.zig");
-const value = @import("value.zig");
-const gc_file = @import("gc_allocator.zig");
 
-const VirtualMachine = virtual_machine.VirtualMachine;
-const Compiler = compiler_file.Compiler;
-const Value = value.Value;
-const String = value.String;
+const compiled_function_file = @import("compiled_function.zig");
+const compiler_file = @import("compiler.zig");
+const disassembler = @import("disassembler.zig");
+const gc_file = @import("gc_allocator.zig");
+const opcode_file = @import("opcodes.zig");
+const value = @import("value.zig");
+const virtual_machine = @import("virtual_machine.zig");
+
 const Allocator = std.mem.Allocator;
+const CompiledFunction = compiled_function_file.CompiledFunction;
+const Compiler = compiler_file.Compiler;
 const GcAllocator = gc_file.GcAllocator;
+const Op = opcode_file.Op;
+const String = value.String;
+const Value = value.Value;
+const VirtualMachine = virtual_machine.VirtualMachine;
 
 var debug_allocator = std.heap.DebugAllocator(.{}).init;
 
@@ -45,9 +51,19 @@ pub fn main() !void {
     defer if (mem.is_debug) {
         const result = debug_allocator.deinit();
         if (result == .leak) {
-            std.debug.print("Memory leak detected!\n", .{});
+            std.debug.print("\n", .{});
+            std.debug.print("******************************************************\n", .{});
+            std.debug.print("*                                                    *\n", .{});
+            std.debug.print("*             Memory Leaks Detected!!!               *\n", .{});
+            std.debug.print("*                                                    *\n", .{});
+            std.debug.print("******************************************************\n", .{});
         } else {
-            std.debug.print("No memory leaks detected.\n", .{});
+            std.debug.print("\n", .{});
+            std.debug.print("******************************************************\n", .{});
+            std.debug.print("*                                                    *\n", .{});
+            std.debug.print("*             No Memory Leaks Detected               *\n", .{});
+            std.debug.print("*                                                    *\n", .{});
+            std.debug.print("******************************************************\n", .{});
         }
     };
 
@@ -68,34 +84,44 @@ pub fn main() !void {
 }
 
 fn runRepl(allocator: Allocator) !void {
-    var vm = try allocator.create(VirtualMachine);
-    defer allocator.destroy(vm);
+    // var vm = try allocator.create(VirtualMachine);
+    // defer allocator.destroy(vm);
 
-    var gc = GcAllocator.init(allocator, vm);
-    defer gc.deinit();
+    // var gc = GcAllocator.init(allocator, vm);
+    // defer gc.deinit();
 
-    vm.* = VirtualMachine.init(&gc);
-    defer vm.deinit();
+    // vm.* = VirtualMachine.init(&gc);
+    // defer vm.deinit();
 
-    var buf: [1024]u8 = undefined;
-    const stdin = std.io.getStdIn().reader();
+    // var buf: [1024]u8 = undefined;
+    // const stdin = std.io.getStdIn().reader();
 
-    std.debug.print("> ", .{});
-    const bytesRead = try stdin.read(buf[0..]);
-    if (bytesRead == 0) return; // EOF
+    // std.debug.print("> ", .{});
+    // const bytesRead = try stdin.read(buf[0..]);
+    // if (bytesRead == 0) return; // EOF
 
-    const line = buf[0..bytesRead];
-    std.debug.print("You typed: {s}\n", .{line});
+    // const line = buf[0..bytesRead];
+    // std.debug.print("You typed: {s}\n", .{line});
 
-    gc.collect();
+    // gc.collect();
 
-    for (0..10) |_| {
-        const str = try gc.allocString(line);
-        try vm.push(Value{ .String = str });
-        std.debug.print("STACK LEN: {d}\n", .{vm.stack.items.len});
-    }
+    // for (0..10) |_| {
+    //     const str = try gc.allocString(line);
+    //     try vm.push(Value{ .String = str });
+    //     std.debug.print("STACK LEN: {d}\n", .{vm.stack.items.len});
+    // }
 
-    gc.collect();
+    // gc.collect();
+
+    var fun = CompiledFunction.init(allocator);
+    defer fun.deinit();
+
+    const idx = try fun.addConstant(Value{ .Number = 1.2 });
+    try fun.writeOp(Op.Constant, 42);
+    try fun.writeShort(idx, 42);
+
+    try fun.writeOp(Op.Return, 45);
+    try disassembler.disassembleCompiledFunction(fun, "code");
 }
 
 fn runFile(allocator: Allocator, file_path: []const u8) !void {
