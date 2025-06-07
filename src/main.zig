@@ -92,6 +92,7 @@ fn runRepl(allocator: Allocator) !void {
     for (0..10) |_| {
         const str = try gc.allocString(line);
         try vm.push(Value{ .String = str });
+        std.debug.print("STACK LEN: {d}\n", .{vm.stack.items.len});
     }
 
     gc.collect();
@@ -107,12 +108,12 @@ fn runFile(allocator: Allocator, file_path: []const u8) !void {
 }
 
 test "run all tests" {
-    _ = @import("virtual_machine.zig");
+    _ = @import("compiled_function.zig");
     _ = @import("compiler.zig");
     _ = @import("disassembler.zig");
+    _ = @import("gc_allocator.zig");
     _ = @import("opcodes.zig");
     _ = @import("scanner.zig");
     _ = @import("value.zig");
-    _ = @import("compiled_function.zig");
-    _ = @import("chunk.zig");
+    _ = @import("virtual_machine.zig");
 }
