@@ -2,26 +2,25 @@
 
 const std = @import("std");
 const value_file = @import("value.zig");
-const garbage_collector = @import("garbage_collector.zig");
 
 const Object = value_file.Object;
 const Value = value_file.Value;
-const GarbageCollector = garbage_collector.GarbageCollector;
+const Allocator = std.mem.Allocator;
 
 pub const CompiledFunction = struct {
-    gc: *GarbageCollector,
+    allocator: Allocator,
     bytecode: std.ArrayList(u8),
     constants: std.ArrayList(Value),
     lines: std.ArrayList(usize),
 
     const Self = @This();
 
-    pub fn init(gc: *GarbageCollector) CompiledFunction {
+    pub fn init(allocator: Allocator) CompiledFunction {
         return CompiledFunction{
-            .gc = gc,
-            .bytecode = std.ArrayList(u8).init(gc.backing_allocator),
-            .constants = std.ArrayList(Value).init(gc.backing_allocator),
-            .lines = std.ArrayList(usize).init(gc.backing_allocator),
+            .allocator = allocator,
+            .bytecode = std.ArrayList(u8).init(allocator),
+            .constants = std.ArrayList(Value).init(allocator),
+            .lines = std.ArrayList(usize).init(allocator),
         };
     }
 

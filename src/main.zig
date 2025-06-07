@@ -5,39 +5,18 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const virtual_machine = @import("virtual_machine.zig");
-const garbage_collector = @import("garbage_collector.zig");
 const compiler_file = @import("compiler.zig");
 const value = @import("value.zig");
+const gc_file = @import("gc_allocator.zig");
 
-const GarbageCollector = garbage_collector.GarbageCollector;
 const VirtualMachine = virtual_machine.VirtualMachine;
 const Compiler = compiler_file.Compiler;
-const Tracer = garbage_collector.Tracer;
 const Value = value.Value;
+const String = value.String;
+const Allocator = std.mem.Allocator;
+const GcAllocator = gc_file.GcAllocator;
 
 var debug_allocator = std.heap.DebugAllocator(.{}).init;
-
-const Runtime = struct {
-    vm: VirtualMachine,
-    compiler: Compiler,
-
-    const Self = @This();
-
-    pub fn init(gc: *GarbageCollector) Runtime {
-        const vm = VirtualMachine.init(gc);
-        const compiler = Compiler.init();
-
-        return .{
-            .vm = vm,
-            .compiler = compiler,
-        };
-    }
-
-    pub fn deinit(self: *Self) void {
-        self.vm.deinit();
-        self.compiler.deinit();
-    }
-};
 
 /// getAllocator checks the current environment and produces the
 /// correct allocator for the program.
@@ -72,18 +51,15 @@ pub fn main() !void {
         }
     };
 
-    var gc = GarbageCollector.init(mem.allocator);
-    defer gc.deinit();
-
     // Read args from the command line.
     const args = try std.process.argsAlloc(mem.allocator);
     defer std.process.argsFree(mem.allocator, args);
 
     // if we have args, run file
     if (args.len == 2) {
-        try runFile(&gc, args[1]);
+        try runFile(mem.allocator, args[1]);
     } else if (args.len == 1) {
-        try runRepl(&gc);
+        try runRepl(mem.allocator);
     } else {
         const stderr = std.io.getStdErr().writer();
         try stderr.print("Usage: kozi <path>", .{});
@@ -91,12 +67,17 @@ pub fn main() !void {
     }
 }
 
-fn runRepl(gc: *GarbageCollector) !void {
-    var runtime = Runtime.init(gc);
-    gc.addVirtualMachine(&runtime.vm);
-    defer runtime.deinit();
+fn runRepl(allocator: Allocator) !void {
+    var vm = try allocator.create(VirtualMachine);
+    defer allocator.destroy(vm);
 
-    var buf: [512]u8 = undefined;
+    var gc = GcAllocator.init(allocator, vm);
+    defer gc.deinit();
+
+    vm.* = VirtualMachine.init(&gc);
+    defer vm.deinit();
+
+    var buf: [1024]u8 = undefined;
     const stdin = std.io.getStdIn().reader();
 
     std.debug.print("> ", .{});
@@ -105,16 +86,22 @@ fn runRepl(gc: *GarbageCollector) !void {
 
     const line = buf[0..bytesRead];
     std.debug.print("You typed: {s}\n", .{line});
-    _ = try gc.newString(line);
-    // gc.*.bytes_allocated = 2000000;
-    std.debug.print("There are '{}' bytes allocated.\n", .{gc.bytes_allocated});
+
+    gc.collect();
+
+    for (0..10) |_| {
+        const str = try gc.allocString(line);
+        try vm.push(Value{ .String = str });
+    }
+
     gc.collect();
 }
 
-fn runFile(gc: *GarbageCollector, file_path: []const u8) !void {
-    var runtime = Runtime.init(gc);
-    gc.addVirtualMachine(&runtime.vm);
-    defer runtime.deinit();
+fn runFile(allocator: Allocator, file_path: []const u8) !void {
+    _ = allocator;
+    // const vm = VirtualMachine.init(allocator);
+    // defer vm.deinit();
+
     _ = file_path;
     @panic("TODO: finish runFile implementation.");
 }
@@ -127,5 +114,5 @@ test "run all tests" {
     _ = @import("scanner.zig");
     _ = @import("value.zig");
     _ = @import("compiled_function.zig");
-    _ = @import("garbage_collector.zig");
+    _ = @import("chunk.zig");
 }
