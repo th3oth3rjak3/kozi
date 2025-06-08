@@ -9,7 +9,7 @@ const WRITER = BUF_WRITER.writer();
 const CompiledFunction = compiled_function_file.CompiledFunction;
 const Op = opcode_file.Op;
 
-pub fn disassembleCompiledFunction(fun: CompiledFunction, name: []const u8) !void {
+pub fn disassembleCompiledFunction(fun: *const CompiledFunction, name: []const u8) !void {
     defer BUF_WRITER.flush() catch {};
     try WRITER.print("== {s} ==\n", .{name});
 

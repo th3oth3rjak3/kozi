@@ -1,6 +1,8 @@
 const std = @import("std");
+const builtin = @import("builtin");
 
 const compiled_function_file = @import("compiled_function.zig");
+const disassembler = @import("disassembler.zig");
 const scanner_file = @import("scanner.zig");
 const opcode_file = @import("opcodes.zig");
 const value_file = @import("value.zig");
@@ -203,6 +205,9 @@ pub const Compiler = struct {
             return false;
         }
 
+        if (builtin.mode == .Debug) {
+            disassembler.disassembleCompiledFunction(self.compiled_function, "code") catch {};
+        }
         return true;
     }
 
