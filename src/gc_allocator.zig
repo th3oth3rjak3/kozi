@@ -5,6 +5,7 @@ const value_file = @import("value.zig");
 const Allocator = std.mem.Allocator;
 const VirtualMachine = vm_file.VirtualMachine;
 const String = value_file.String;
+const Value = value_file.Value;
 
 const ObjectType = enum {
     object,
@@ -78,21 +79,50 @@ pub const GcAllocator = struct {
     backing_allocator: Allocator,
     bytes_allocated: usize = 0,
     gc_threshold: usize = 1024 * 1024, // 1 MB
-    vm: *VirtualMachine,
+    vm: ?*VirtualMachine,
     interned_strings: std.StringHashMap(*GcObject(String)),
 
     const Self = @This();
 
-    pub fn init(backing_allocator: Allocator, vm: *VirtualMachine) Self {
+    pub fn init(backing_allocator: Allocator) Self {
         return .{
             .backing_allocator = backing_allocator,
-            .vm = vm,
+            .vm = null,
             .interned_strings = std.StringHashMap(*GcObject(String)).init(backing_allocator),
         };
     }
 
+    pub fn setVm(self: *Self, vm: *VirtualMachine) void {
+        self.vm = vm;
+    }
+
+    // pub fn deinit(self: *Self) void {
+    //     var current = self.objects;
+    //     while (current != null) {
+    //         const next = current.?.next;
+    //         current.?.destroy_fn(self.backing_allocator, current.?);
+    //         current = next;
+    //     }
+    //     self.interned_strings.deinit();
+    //     std.debug.print("TOTAL BYTES ALLOCATED: {d}\n", .{self.bytes_allocated});
+    // }
+    //
     pub fn deinit(self: *Self) void {
+        // Clean up objects FIRST (while HashMap is still valid)
+        var current = self.objects;
+        while (current != null) {
+            const next = current.?.next;
+
+            // Convert GcNode* back to the original GcObject(T)*
+            const gc_obj_ptr: *GcObject(String) = @fieldParentPtr("header", current.?);
+            current.?.destroy_fn(self.backing_allocator, gc_obj_ptr);
+
+            current = next;
+        }
+
+        // THEN clean up the HashMap
         self.interned_strings.deinit();
+
         std.debug.print("TOTAL BYTES ALLOCATED: {d}\n", .{self.bytes_allocated});
     }
 
@@ -226,35 +256,40 @@ pub const GcAllocator = struct {
     }
 
     pub fn collect(self: *Self) void {
-        self.vm.traceRoots();
+        if (self.vm) |vm| {
+            vm.traceRoots();
+        }
         self.sweep();
         self.resetMarks();
     }
 
-    fn sweep(self: *Self) void {
+    pub fn sweep(self: *Self) void {
         var current = self.objects;
 
-        while (current) |node| {
-            const next = node.next;
+        while (current != null) {
+            if (current) |node| {
+                const next = node.next;
 
-            if (!node.marked) {
-                if (node == self.objects) {
-                    self.objects = node.next;
+                if (!node.marked) {
+                    if (node == self.objects) {
+                        self.objects = next;
+                    }
+                    node.unlink();
+
+                    const current_size = node.size;
+
+                    node.destroy_fn(self.backing_allocator, node);
+
+                    // Safe subtraction to prevent underflow
+                    if (self.bytes_allocated >= current_size) {
+                        self.bytes_allocated -= current_size;
+                    } else {
+                        std.log.warn("GC accounting error: trying to subtract {} from {}", .{ current_size, self.bytes_allocated });
+                        self.bytes_allocated = 0;
+                    }
                 }
-                node.unlink();
-
-                node.destroy_fn(self.backing_allocator, node);
-
-                // Safe subtraction to prevent underflow
-                if (self.bytes_allocated >= node.size) {
-                    self.bytes_allocated -= node.size;
-                } else {
-                    std.log.warn("GC accounting error: trying to subtract {} from {}", .{ node.size, self.bytes_allocated });
-                    self.bytes_allocated = 0;
-                }
+                current = next;
             }
-
-            current = next;
         }
     }
 
@@ -274,3 +309,182 @@ pub const GcAllocator = struct {
         self.objects = node;
     }
 };
+
+const testing = std.testing;
+
+test "GcAllocator basic allocation and deallocation" {
+    var gc = GcAllocator.init(testing.allocator);
+    defer gc.deinit();
+
+    // Test simple object allocation
+    const obj = try gc.allocGcObject(struct { x: i32 }, .object, GcObject(struct { x: i32 }).destroy);
+    // defer gc.backing_allocator.destroy(obj); // Manually destroy for test
+
+    obj.data.x = 42;
+    try testing.expect(obj.data.x == 42);
+    try testing.expect(gc.objects != null);
+    try testing.expect(gc.bytes_allocated > 0);
+}
+
+test "GcAllocator string interning" {
+    var gc = GcAllocator.init(testing.allocator);
+    defer gc.deinit();
+
+    const str1 = try gc.allocString("hello");
+    const str2 = try gc.allocString("hello");
+    const str3 = try gc.allocString("world");
+
+    // Should return same pointer for same string
+    try testing.expect(str1 == str2);
+    // Different strings should get different pointers
+    try testing.expect(str1 != str3);
+    try testing.expectEqualStrings(str1.data.value, "hello");
+    try testing.expectEqualStrings(str3.data.value, "world");
+}
+
+test "GcAllocator mark and sweep" {
+    var gc = GcAllocator.init(testing.allocator);
+    defer gc.deinit();
+
+    // Allocate some objects
+    const obj1 = try gc.allocGcObject(struct { val: i32 }, .object, GcObject(struct { val: i32 }).destroy);
+    _ = try gc.allocGcObject(struct { val: i32 }, .object, GcObject(struct { val: i32 }).destroy);
+
+    // Mark one object as reachable
+    gc.markObject(obj1);
+
+    // Run collection
+    gc.sweep();
+
+    // obj1 should still exist, obj2 should be collected
+    try testing.expect(gc.objects != null);
+    try testing.expect(gc.objects.? == obj1.getGcNode());
+    try testing.expect(gc.objects.?.next == null);
+}
+
+test "GcAllocator memory accounting" {
+    var gc = GcAllocator.init(testing.allocator);
+    defer gc.deinit();
+
+    const initial_bytes = gc.bytes_allocated;
+
+    // Allocate a string
+    _ = try gc.allocString("test string");
+    const after_alloc_bytes = gc.bytes_allocated;
+    try testing.expect(after_alloc_bytes > initial_bytes);
+
+    // Mark and sweep should collect it
+    gc.sweep();
+    try testing.expect(gc.bytes_allocated == initial_bytes);
+}
+
+test "GcAllocator integration with VM" {
+    var gc = GcAllocator.init(testing.allocator);
+    defer gc.deinit();
+
+    var vm = VirtualMachine.init(&gc);
+    defer vm.deinit();
+
+    gc.setVm(&vm);
+
+    const str1 = try gc.allocString("hello");
+    const str2 = try gc.allocString("world");
+
+    vm.push(Value{ .String = str1 });
+    vm.push(Value{ .String = str2 });
+
+    // Force a collection
+    gc.collect();
+
+    // Verify objects are still accessible
+    try testing.expect(gc.objects != null);
+}
+
+// test "GcAllocator stress test" {
+//     var gc = GcAllocator.init(testing.allocator);
+//     defer gc.deinit();
+
+//     // Allocate many objects
+//     const alloc_count = 1000;
+//     var objects = std.ArrayList(*GcObject(struct { id: usize })).init(testing.allocator);
+//     defer objects.deinit();
+
+//     for (0..alloc_count) |i| {
+//         const obj = try gc.allocGcObject(struct { id: usize }, .object, GcObject(struct { id: usize }).destroy);
+//         obj.data.id = i;
+//         try objects.append(obj);
+//     }
+
+//     // Mark every other object
+//     for (objects.items, 0..) |obj, i| {
+//         if (i % 2 == 0) {
+//             gc.markObject(obj);
+//         }
+//     }
+
+//     // Run collection
+//     gc.collect();
+
+//     // Verify half were collected
+//     var count: usize = 0;
+//     var current = gc.objects;
+//     while (current) |node| {
+//         count += 1;
+//         current = node.next;
+//     }
+//     try testing.expect(count == alloc_count / 2);
+// }
+
+test "GcAllocator destruction order" {
+    // This test verifies proper cleanup order
+    var gc = GcAllocator.init(testing.allocator);
+
+    // Create some objects
+    _ = try gc.allocString("test1");
+    _ = try gc.allocString("test2");
+
+    // This should clean up everything without crashes
+    gc.deinit();
+}
+
+// test "GcNode linking/unlinking" {
+//     var gc = GcAllocator.init(testing.allocator);
+//     defer gc.deinit();
+
+//     const obj1 = try gc.allocGcObject(struct { x: i32 }, .object, GcObject(struct { x: i32 }).destroy);
+//     const obj2 = try gc.allocGcObject(struct { x: i32 }, .object, GcObject(struct { x: i32 }).destroy);
+//     const obj3 = try gc.allocGcObject(struct { x: i32 }, .object, GcObject(struct { x: i32 }).destroy);
+
+//     // Verify linked list structure
+//     try testing.expect(gc.objects == obj3.getGcNode());
+//     try testing.expect(gc.objects.?.next == obj2.getGcNode());
+//     try testing.expect(gc.objects.?.next.?.next == obj1.getGcNode());
+
+//     // Test unlinking middle node
+//     obj2.getGcNode().unlink();
+//     try testing.expect(gc.objects == obj3.getGcNode());
+//     try testing.expect(gc.objects.?.next == obj1.getGcNode());
+//     try testing.expect(gc.objects.?.next.?.previous == obj3.getGcNode());
+// }
+
+// test "GcAllocator edge cases" {
+//     var gc = GcAllocator.init(testing.allocator);
+//     defer gc.deinit();
+
+//     // Test empty string
+//     const empty_str = try gc.allocString("");
+//     try testing.expectEqualStrings(empty_str.data.value, "");
+
+//     // Test allocation right at threshold
+//     gc.gc_threshold = 64;
+//     const small_obj = try gc.allocGcObject(struct { x: i32 }, .object, GcObject(struct { x: i32 }).destroy);
+//     try testing.expect(small_obj != null);
+// }
+
+test "empty GC behaves correctly" {
+    var gc = GcAllocator.init(testing.allocator);
+    defer gc.deinit();
+
+    gc.collect(); // Shouldn't crash
+    try testing.expect(gc.objects == null);
+}

@@ -11,4 +11,10 @@ pub const Op = enum(u8) {
     Return,
     /// Load the constant at the address specified in the following two bytes (u16)
     Constant,
+    /// Negate a numeric value, e.g.: 1 -> -1
+    Negate,
+    Add,
+    Subtract,
+    Multiply,
+    Divide,
 };

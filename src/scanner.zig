@@ -19,16 +19,15 @@ pub const ScanError = struct {
         InvalidUtf8,
     };
 
-    pub fn format(self: ScanError, comptime fmt: []const u8, options: std.fmt.FormatOptions, writer: std.io.AnyWriter) !void {
+    pub fn format(self: ScanError, comptime fmt: []const u8, options: std.fmt.FormatOptions, writer: anytype) !void {
         _ = fmt;
         _ = options;
-
-        try writer.print("[line {d}:{d}] Error: {s}", .{ self.line, self.column, self.message });
+        try std.fmt.format(writer, "[line {d}:{d}] Error: {s}", .{ self.line, self.column, self.message });
         if (self.codepoint) |cp| {
             if (cp <= 127) {
-                try writer.print(" ('{c}')", .{@as(u8, @intCast(cp))});
+                try std.fmt.format(writer, " ('{c}')", .{@as(u8, @intCast(cp))});
             } else {
-                try writer.print(" (U+{X:0>4})", .{cp});
+                try std.fmt.format(writer, " (U+{X:0>4})", .{cp});
             }
         }
     }

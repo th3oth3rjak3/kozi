@@ -54,14 +54,14 @@ pub fn main() !void {
             std.debug.print("\n", .{});
             std.debug.print("******************************************************\n", .{});
             std.debug.print("*                                                    *\n", .{});
-            std.debug.print("*             Memory Leaks Detected!!!               *\n", .{});
+            std.debug.print("*               Memory Leaks Detected!!!             *\n", .{});
             std.debug.print("*                                                    *\n", .{});
             std.debug.print("******************************************************\n", .{});
         } else {
             std.debug.print("\n", .{});
             std.debug.print("******************************************************\n", .{});
             std.debug.print("*                                                    *\n", .{});
-            std.debug.print("*             No Memory Leaks Detected               *\n", .{});
+            std.debug.print("*               No Memory Leaks Detected             *\n", .{});
             std.debug.print("*                                                    *\n", .{});
             std.debug.print("******************************************************\n", .{});
         }
@@ -79,58 +79,67 @@ pub fn main() !void {
     } else {
         const stderr = std.io.getStdErr().writer();
         try stderr.print("Usage: kozi <path>", .{});
-        std.process.exit(1);
+        std.process.exit(64);
     }
 }
 
 fn runRepl(allocator: Allocator) !void {
-    // var vm = try allocator.create(VirtualMachine);
-    // defer allocator.destroy(vm);
+    var gc = GcAllocator.init(allocator);
+    defer gc.deinit();
 
-    // var gc = GcAllocator.init(allocator, vm);
-    // defer gc.deinit();
+    var vm = VirtualMachine.init(&gc);
+    defer vm.deinit();
 
-    // vm.* = VirtualMachine.init(&gc);
-    // defer vm.deinit();
+    gc.setVm(&vm);
 
-    // var buf: [1024]u8 = undefined;
-    // const stdin = std.io.getStdIn().reader();
+    const stdin = std.io.getStdIn().reader();
 
-    // std.debug.print("> ", .{});
-    // const bytesRead = try stdin.read(buf[0..]);
-    // if (bytesRead == 0) return; // EOF
+    var buf: [1024]u8 = undefined;
 
-    // const line = buf[0..bytesRead];
-    // std.debug.print("You typed: {s}\n", .{line});
+    while (true) {
+        std.debug.print("> ", .{});
+        if (try stdin.readUntilDelimiterOrEof(buf[0..], '\n')) |input| {
+            // Got input
+            const trimmed = std.mem.trim(u8, input, " \t\r\n");
+            if (trimmed.len == 0) continue;
+            var fun = CompiledFunction.init(allocator);
+            defer fun.deinit();
+            _ = try vm.interpret(trimmed, &fun);
+        } else {
+            // EOF (Ctrl+D) detected
+            break;
+        }
+    }
+}
 
-    // gc.collect();
+fn runFile(allocator: Allocator, file_path: []const u8) !void {
+    const cwd = std.fs.cwd();
+    const file = try cwd.openFile(file_path, std.fs.File.OpenFlags{});
+    defer file.close();
+    const source = try file.readToEndAlloc(allocator, std.math.maxInt(u64));
+    defer allocator.free(source);
 
-    // for (0..10) |_| {
-    //     const str = try gc.allocString(line);
-    //     try vm.push(Value{ .String = str });
-    //     std.debug.print("STACK LEN: {d}\n", .{vm.stack.items.len});
-    // }
+    var gc = GcAllocator.init(allocator);
+    defer gc.deinit();
 
-    // gc.collect();
+    var vm = VirtualMachine.init(&gc);
+    defer vm.deinit();
+
+    gc.setVm(&vm);
 
     var fun = CompiledFunction.init(allocator);
     defer fun.deinit();
 
-    const idx = try fun.addConstant(Value{ .Number = 1.2 });
-    try fun.writeOp(Op.Constant, 42);
-    try fun.writeShort(idx, 42);
-
-    try fun.writeOp(Op.Return, 45);
-    try disassembler.disassembleCompiledFunction(fun, "code");
-}
-
-fn runFile(allocator: Allocator, file_path: []const u8) !void {
-    _ = allocator;
-    // const vm = VirtualMachine.init(allocator);
-    // defer vm.deinit();
-
-    _ = file_path;
-    @panic("TODO: finish runFile implementation.");
+    const result = try vm.interpret(source, &fun);
+    switch (result) {
+        .Ok => {},
+        .CompileError => {
+            std.process.exit(65);
+        },
+        .RuntimeError => {
+            std.process.exit(70);
+        },
+    }
 }
 
 test "run all tests" {

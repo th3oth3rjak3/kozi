@@ -27,9 +27,12 @@ pub const CompiledFunction = struct {
     }
 
     pub fn deinit(self: *Self) void {
-        self.lines.deinit();
+        self.constants.clearAndFree();
+        self.bytecode.clearAndFree();
+        self.lines.clearAndFree();
         self.constants.deinit();
         self.bytecode.deinit();
+        self.lines.deinit();
     }
 
     pub fn addConstant(self: *Self, value: Value) !u16 {
@@ -43,10 +46,11 @@ pub const CompiledFunction = struct {
     }
 
     pub fn writeShort(self: *Self, short: u16, line: usize) !void {
-        const high_byte: u8 = @intCast(short >> 4);
-        const low_byte: u8 = @intCast(short);
+        const high_byte: u8 = @intCast(short >> 8);
+        const low_byte: u8 = @intCast(short & 0xFF);
         try self.writeByte(high_byte, line);
         try self.writeByte(low_byte, line);
+        try self.lines.append(line);
         try self.lines.append(line);
     }
 

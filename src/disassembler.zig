@@ -4,23 +4,25 @@ const std = @import("std");
 const compiled_function_file = @import("compiled_function.zig");
 const opcode_file = @import("opcodes.zig");
 
+var BUF_WRITER = std.io.bufferedWriter(std.io.getStdOut().writer());
+const WRITER = BUF_WRITER.writer();
 const CompiledFunction = compiled_function_file.CompiledFunction;
 const Op = opcode_file.Op;
 
 pub fn disassembleCompiledFunction(fun: CompiledFunction, name: []const u8) !void {
-    var buf_writer = std.io.bufferedWriter(std.io.getStdOut().writer());
-    var writer = buf_writer.writer();
-    defer buf_writer.flush() catch {};
-
-    try writer.print("== {s} ==\n", .{name});
+    defer BUF_WRITER.flush() catch {};
+    try WRITER.print("== {s} ==\n", .{name});
 
     var offset: usize = 0;
     while (offset < fun.bytecode.items.len) {
-        offset = try disassembleInstruction(fun, offset, writer);
+        offset = try disassembleInstruction(fun, offset, WRITER);
     }
 }
 
-pub fn disassembleInstruction(fun: CompiledFunction, offset: usize, writer: anytype) !usize {
+pub fn disassembleInstruction(fun: *const CompiledFunction, offset: usize, writer: anytype) !usize {
+    if (offset >= fun.bytecode.items.len) {
+        return offset + 1;
+    }
     try std.fmt.format(writer, "{d:04} ", .{offset});
     if (offset > 0 and fun.lines.items[offset] == fun.lines.items[offset - 1]) {
         try std.fmt.format(writer, "   | ", .{});
@@ -33,6 +35,11 @@ pub fn disassembleInstruction(fun: CompiledFunction, offset: usize, writer: anyt
         .Return => simpleInstruction("OP_RETURN", offset, writer),
         .Pop => simpleInstruction("OP_POP", offset, writer),
         .Constant => constantInstruction("OP_CONSTANT", fun, offset, writer),
+        .Negate => simpleInstruction("OP_NEGATE", offset, writer),
+        .Add => simpleInstruction("OP_ADD", offset, writer),
+        .Subtract => simpleInstruction("OP_SUBTRACT", offset, writer),
+        .Multiply => simpleInstruction("OP_MULTIPLY", offset, writer),
+        .Divide => simpleInstruction("OP_DIVIDE", offset, writer),
     };
 }
 
@@ -41,7 +48,7 @@ fn simpleInstruction(name: []const u8, offset: usize, writer: anytype) !usize {
     return offset + 1;
 }
 
-fn constantInstruction(name: []const u8, fun: CompiledFunction, offset: usize, writer: anytype) !usize {
+fn constantInstruction(name: []const u8, fun: *const CompiledFunction, offset: usize, writer: anytype) !usize {
     const high_byte: u8 = fun.bytecode.items[offset + 1];
     const low_byte: u8 = fun.bytecode.items[offset + 2];
     const address: u16 = @as(u16, high_byte) << 4 | @as(u16, low_byte);

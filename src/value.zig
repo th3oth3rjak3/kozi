@@ -15,14 +15,23 @@ pub const Value = union(enum) {
     const Self = @This();
 
     pub fn isNumber(self: *const Self) bool {
-        return switch (self) {
+        return switch (self.*) {
             .Number => true,
             else => false,
         };
     }
 
     pub fn asNumber(self: *Self) f64 {
-        return self.Number;
+        switch (self.*) {
+            .Number => |n| {
+                return n;
+            },
+            else => @panic("NOT A NUMBER"),
+        }
+    }
+
+    pub fn negate(self: *Self) f64 {
+        return self.asNumber() * -1;
     }
 
     pub fn printValue(self: *const Self, writer: anytype) !void {
