@@ -93,6 +93,10 @@ pub const VirtualMachine = struct {
 
             switch (instruction) {
                 .Add => {
+                    if (!self.peek(0).isNumber() or !self.peek(1).isNumber()) {
+                        self.runtimeError("Operands must be numbers.", .{});
+                        return .RuntimeError;
+                    }
                     var b = self.pop();
                     var a = self.pop();
                     const result = a.asNumber() + b.asNumber();
@@ -103,21 +107,93 @@ pub const VirtualMachine = struct {
                     self.push(value);
                 },
                 .Divide => {
+                    if (!self.peek(0).isNumber() or !self.peek(1).isNumber()) {
+                        self.runtimeError("Operands must be numbers.", .{});
+                        return .RuntimeError;
+                    }
                     var b = self.pop();
                     var a = self.pop();
                     const result = a.asNumber() / b.asNumber();
                     self.push(Value{ .Number = result });
                 },
+                .Equal => {
+                    const b = self.pop();
+                    const a = self.pop();
+                    self.push(Value{ .Bool = a.equals(&b) });
+                },
+                .False => {
+                    self.push(Value{ .Bool = false });
+                },
+                .Greater => {
+                    if (!self.peek(0).isNumber() or !self.peek(1).isNumber()) {
+                        self.runtimeError("Operands must be numbers.", .{});
+                        return .RuntimeError;
+                    }
+                    var b = self.pop();
+                    var a = self.pop();
+                    const result = a.asNumber() > b.asNumber();
+                    self.push(Value{ .Bool = result });
+                },
+                .GreaterEqual => {
+                    if (!self.peek(0).isNumber() or !self.peek(1).isNumber()) {
+                        self.runtimeError("Operands must be numbers.", .{});
+                        return .RuntimeError;
+                    }
+                    var b = self.pop();
+                    var a = self.pop();
+                    const result = a.asNumber() >= b.asNumber();
+                    self.push(Value{ .Bool = result });
+                },
+                .Less => {
+                    if (!self.peek(0).isNumber() or !self.peek(1).isNumber()) {
+                        self.runtimeError("Operands must be numbers.", .{});
+                        return .RuntimeError;
+                    }
+                    var b = self.pop();
+                    var a = self.pop();
+                    const result = a.asNumber() < b.asNumber();
+                    self.push(Value{ .Bool = result });
+                },
+                .LessEqual => {
+                    if (!self.peek(0).isNumber() or !self.peek(1).isNumber()) {
+                        self.runtimeError("Operands must be numbers.", .{});
+                        return .RuntimeError;
+                    }
+                    var b = self.pop();
+                    var a = self.pop();
+                    const result = a.asNumber() <= b.asNumber();
+                    self.push(Value{ .Bool = result });
+                },
                 .Multiply => {
+                    if (!self.peek(0).isNumber() or !self.peek(1).isNumber()) {
+                        self.runtimeError("Operands must be numbers.", .{});
+                        return .RuntimeError;
+                    }
                     var b = self.pop();
                     var a = self.pop();
                     const result = a.asNumber() * b.asNumber();
                     self.push(Value{ .Number = result });
                 },
                 .Negate => {
+                    if (!self.peek(0).isNumber()) {
+                        self.runtimeError("Operand must be a number.", .{});
+                        return .RuntimeError;
+                    }
                     var popped = self.pop();
                     const negated = popped.negate();
                     self.push(Value{ .Number = negated });
+                },
+                .Nil => {
+                    self.push(Value.Nil);
+                },
+                .Not => {
+                    const to_push = self.pop().isFalsey();
+                    self.push(Value{ .Bool = to_push });
+                },
+                .NotEqual => {
+                    const b = self.pop();
+                    const a = self.pop();
+                    self.push(Value{ .Bool = !a.equals(&b) });
                 },
                 .Pop => {
                     _ = self.pop();
@@ -130,13 +206,38 @@ pub const VirtualMachine = struct {
                     return .Ok;
                 },
                 .Subtract => {
+                    if (!self.peek(0).isNumber() or !self.peek(1).isNumber()) {
+                        self.runtimeError("Operands must be numbers.", .{});
+                        return .RuntimeError;
+                    }
                     var b = self.pop();
                     var a = self.pop();
                     const result = a.asNumber() - b.asNumber();
                     self.push(Value{ .Number = result });
                 },
+                .True => {
+                    self.push(Value{ .Bool = true });
+                },
             }
         }
+    }
+
+    inline fn peek(self: *Self, distance: usize) Value {
+        const idx = self.stack_top - distance - 1;
+        return self.stack[idx];
+    }
+
+    inline fn runtimeError(self: *Self, comptime message: []const u8, args: anytype) void {
+        var buf_writer = std.io.bufferedWriter(std.io.getStdErr().writer());
+        var writer = buf_writer.writer();
+        defer buf_writer.flush() catch {};
+
+        writer.print(message, args) catch {};
+        writer.print("\n", .{}) catch {};
+        const instruction = self.ip - 1;
+        const line = self.compiled_function.?.lines.items[instruction];
+        writer.print("[line {d}] in script\n", .{line}) catch {};
+        self.resetStack();
     }
 
     inline fn resetStack(self: *Self) void {

@@ -43,7 +43,7 @@ const ParseRule = struct {
 };
 
 const RULES = std.EnumArray(TokenType, ParseRule).init(.{
-    .LeftParen = .{ .prefix = Compiler.expression, .infix = null, .precedence = .None },
+    .LeftParen = .{ .prefix = Compiler.grouping, .infix = null, .precedence = .None },
     .RightParen = .{ .prefix = null, .infix = null, .precedence = .None },
     .LeftBrace = .{ .prefix = null, .infix = null, .precedence = .None },
     .RightBrace = .{ .prefix = null, .infix = null, .precedence = .None },
@@ -60,111 +60,35 @@ const RULES = std.EnumArray(TokenType, ParseRule).init(.{
     .StarEqual = .{ .prefix = null, .infix = null, .precedence = .None },
     .Slash = .{ .prefix = null, .infix = Compiler.binary, .precedence = .Factor },
     .SlashEqual = .{ .prefix = null, .infix = null, .precedence = .None },
-    .Bang = .{ .prefix = null, .infix = null, .precedence = .None },
-    .BangEqual = .{ .prefix = null, .infix = null, .precedence = .None },
+    .Bang = .{ .prefix = Compiler.unary, .infix = null, .precedence = .None },
+    .BangEqual = .{ .prefix = null, .infix = Compiler.binary, .precedence = .Equality },
     .Equal = .{ .prefix = null, .infix = null, .precedence = .None },
-    .EqualEqual = .{ .prefix = null, .infix = null, .precedence = .None },
-    .Greater = .{ .prefix = null, .infix = null, .precedence = .None },
-    .GreaterEqual = .{ .prefix = null, .infix = null, .precedence = .None },
-    .Less = .{ .prefix = null, .infix = null, .precedence = .None },
-    .LessEqual = .{ .prefix = null, .infix = null, .precedence = .None },
+    .EqualEqual = .{ .prefix = null, .infix = Compiler.binary, .precedence = .Equality },
+    .Greater = .{ .prefix = null, .infix = Compiler.binary, .precedence = .Comparison },
+    .GreaterEqual = .{ .prefix = null, .infix = Compiler.binary, .precedence = .Comparison },
+    .Less = .{ .prefix = null, .infix = Compiler.binary, .precedence = .Comparison },
+    .LessEqual = .{ .prefix = null, .infix = Compiler.binary, .precedence = .Comparison },
     .Identifier = .{ .prefix = null, .infix = null, .precedence = .None },
     .String = .{ .prefix = null, .infix = null, .precedence = .None },
     .Number = .{ .prefix = Compiler.number, .infix = null, .precedence = .None },
     .And = .{ .prefix = null, .infix = null, .precedence = .None },
     .Class = .{ .prefix = null, .infix = null, .precedence = .None },
     .Else = .{ .prefix = null, .infix = null, .precedence = .None },
-    .False = .{ .prefix = null, .infix = null, .precedence = .None },
+    .False = .{ .prefix = Compiler.literal, .infix = null, .precedence = .None },
     .For = .{ .prefix = null, .infix = null, .precedence = .None },
     .Fun = .{ .prefix = null, .infix = null, .precedence = .None },
     .If = .{ .prefix = null, .infix = null, .precedence = .None },
-    .Nil = .{ .prefix = null, .infix = null, .precedence = .None },
+    .Nil = .{ .prefix = Compiler.literal, .infix = null, .precedence = .None },
     .Or = .{ .prefix = null, .infix = null, .precedence = .None },
     .Print = .{ .prefix = null, .infix = null, .precedence = .None },
     .Return = .{ .prefix = null, .infix = null, .precedence = .None },
     .Super = .{ .prefix = null, .infix = null, .precedence = .None },
     .This = .{ .prefix = null, .infix = null, .precedence = .None },
-    .True = .{ .prefix = null, .infix = null, .precedence = .None },
+    .True = .{ .prefix = Compiler.literal, .infix = null, .precedence = .None },
     .Let = .{ .prefix = null, .infix = null, .precedence = .None },
     .While = .{ .prefix = null, .infix = null, .precedence = .None },
     .EOF = .{ .prefix = null, .infix = null, .precedence = .None },
 });
-
-pub const Parser = struct {
-    scanner: Scanner,
-    current: Token,
-    previous: Token,
-    had_error: bool,
-    panic_mode: bool,
-
-    const Self = @This();
-
-    pub fn init(source: []const u8) Self {
-        return .{
-            .scanner = Scanner.new(source),
-            .current = undefined,
-            .previous = undefined,
-            .had_error = false,
-            .panic_mode = false,
-        };
-    }
-
-    pub fn advance(self: *Self) ScanResult {
-        self.previous = self.current;
-        return self.scanner.scanToken();
-    }
-
-    pub fn expression(self: *Self, compiler: *Compiler) !void {
-        _ = compiler;
-        return self.parsePrecedence(Precedence.Assignment);
-    }
-
-    pub fn number(self: *Self, compiler: *Compiler) !void {
-        const value = try std.fmt.parseFloat(f64, self.previous.lexeme);
-        return compiler.emitConstant(Value{ .Number = value });
-    }
-
-    pub fn grouping(self: *Self, compiler: *Compiler) !void {
-        self.expression(compiler);
-        self.compiler.consume(TokenType.RightParen, "Expect ')' after expression.");
-    }
-
-    pub fn unary(self: *Self, compiler: *Compiler) !void {
-        const op = self.previous.token_type;
-
-        try self.parsePrecedence(Precedence.Unary);
-
-        switch (op) {
-            .Minus => {
-                try compiler.emitOp(Op.Negate);
-            },
-            else => {},
-        }
-    }
-
-    pub fn binary(self: *Self, compiler: *Compiler) !void {
-        const op = self.previous.token_type;
-        const rule = RULES.get(op);
-        const int_prec: u8 = @intFromEnum(rule.precedence) + 1;
-        try self.parsePrecedence(@enumFromInt(int_prec));
-
-        switch (op) {
-            .Plus => {
-                try compiler.emitOp(Op.Add);
-            },
-            .Minus => {
-                try compiler.emitOp(Op.Subtract);
-            },
-            .Star => {
-                try compiler.emitOp(Op.Multiply);
-            },
-            .Slash => {
-                try compiler.emitOp(Op.Divide);
-            },
-            else => {},
-        }
-    }
-};
 
 /// Compiler converts source code into runnable bytecode.
 pub const Compiler = struct {
@@ -341,8 +265,8 @@ pub const Compiler = struct {
     }
 
     pub fn grouping(self: *Self) !void {
-        self.expression();
-        self.compiler.consume(TokenType.RightParen, "Expect ')' after expression.");
+        try self.expression();
+        try self.consume(TokenType.RightParen, "Expect ')' after expression.");
     }
 
     pub fn unary(self: *Self) !void {
@@ -353,6 +277,9 @@ pub const Compiler = struct {
         switch (op) {
             .Minus => {
                 try self.emitOp(Op.Negate);
+            },
+            .Bang => {
+                try self.emitOp(Op.Not);
             },
             else => {},
         }
@@ -377,6 +304,33 @@ pub const Compiler = struct {
             .Slash => {
                 try self.emitOp(Op.Divide);
             },
+            .BangEqual => {
+                try self.emitOp(Op.NotEqual);
+            },
+            .EqualEqual => {
+                try self.emitOp(Op.Equal);
+            },
+            .Greater => {
+                try self.emitOp(Op.Greater);
+            },
+            .GreaterEqual => {
+                try self.emitOp(Op.GreaterEqual);
+            },
+            .Less => {
+                try self.emitOp(Op.Less);
+            },
+            .LessEqual => {
+                try self.emitOp(Op.LessEqual);
+            },
+            else => {},
+        }
+    }
+
+    pub fn literal(self: *Self) !void {
+        switch (self.previous.token_type) {
+            .False => try self.emitOp(.False),
+            .True => try self.emitOp(.True),
+            .Nil => try self.emitOp(.Nil),
             else => {},
         }
     }

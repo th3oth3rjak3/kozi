@@ -21,16 +21,21 @@ pub const Value = union(enum) {
         };
     }
 
-    pub fn asNumber(self: *Self) f64 {
-        switch (self.*) {
-            .Number => |n| {
-                return n;
-            },
+    pub fn asNumber(self: *const Self) f64 {
+        return switch (self.*) {
+            .Number => |n| n,
             else => @panic("NOT A NUMBER"),
-        }
+        };
     }
 
-    pub fn negate(self: *Self) f64 {
+    pub fn asBool(self: *const Self) bool {
+        return switch (self.*) {
+            .Bool => |b| b,
+            else => @panic("NOT A BOOLEAN"),
+        };
+    }
+
+    pub fn negate(self: *const Self) f64 {
         return self.asNumber() * -1;
     }
 
@@ -49,6 +54,27 @@ pub const Value = union(enum) {
                 try std.fmt.format(writer, "{s}", .{s.data.value});
             },
         }
+    }
+
+    pub fn isFalsey(self: *const Self) bool {
+        return switch (self.*) {
+            .Bool => |b| !b,
+            .Nil => true,
+            else => false,
+        };
+    }
+
+    pub fn equals(self: *const Self, rhs: *const Self) bool {
+        if (std.meta.activeTag(self.*) != std.meta.activeTag(rhs.*)) {
+            return false;
+        }
+
+        return switch (self.*) {
+            .Number => |a| a == rhs.asNumber(),
+            .Bool => |a| a == rhs.asBool(),
+            .Nil => true,
+            .String => |a| std.mem.eql(u8, a.data.value, rhs.String.data.value),
+        };
     }
 };
 

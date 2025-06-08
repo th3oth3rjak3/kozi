@@ -40,6 +40,16 @@ pub fn disassembleInstruction(fun: *const CompiledFunction, offset: usize, write
         .Subtract => simpleInstruction("OP_SUBTRACT", offset, writer),
         .Multiply => simpleInstruction("OP_MULTIPLY", offset, writer),
         .Divide => simpleInstruction("OP_DIVIDE", offset, writer),
+        .Nil => simpleInstruction("OP_NIL", offset, writer),
+        .True => simpleInstruction("OP_TRUE", offset, writer),
+        .False => simpleInstruction("OP_FALSE", offset, writer),
+        .Not => simpleInstruction("OP_NOT", offset, writer),
+        .Equal => simpleInstruction("OP_EQUAL", offset, writer),
+        .NotEqual => simpleInstruction("OP_NOT_EQUAL", offset, writer),
+        .Greater => simpleInstruction("OP_GREATER", offset, writer),
+        .GreaterEqual => simpleInstruction("OP_GREATER_EQUAL", offset, writer),
+        .Less => simpleInstruction("OP_LESS", offset, writer),
+        .LessEqual => simpleInstruction("OP_LESS_EQUAL", offset, writer),
     };
 }
 
