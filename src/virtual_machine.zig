@@ -55,7 +55,7 @@ pub const VirtualMachine = struct {
 
     pub fn interpret(self: *Self, source: []const u8, fun: *CompiledFunction) !InterpretResult {
         self.resetStack();
-        var compiler = Compiler.init(fun);
+        var compiler = Compiler.init(self.gc, fun);
 
         if (!try compiler.compile(source)) {
             return .CompileError;
@@ -93,14 +93,28 @@ pub const VirtualMachine = struct {
 
             switch (instruction) {
                 .Add => {
-                    if (!self.peek(0).isNumber() or !self.peek(1).isNumber()) {
-                        self.runtimeError("Operands must be numbers.", .{});
+                    const both_numbers = self.peek(0).isNumber() and self.peek(1).isNumber();
+                    const both_strings = self.peek(0).isString() and self.peek(1).isString();
+                    if (!both_numbers and !both_strings) {
+                        self.runtimeError("Operands must be numbers or strings.", .{});
                         return .RuntimeError;
                     }
                     var b = self.pop();
                     var a = self.pop();
-                    const result = a.asNumber() + b.asNumber();
-                    self.push(Value{ .Number = result });
+                    if (both_numbers) {
+                        const result = a.asNumber() + b.asNumber();
+                        self.push(Value{ .Number = result });
+                    }
+                    if (both_strings) {
+                        var buf = std.ArrayList(u8).init(self.gc.backing_allocator);
+                        defer buf.deinit();
+                        try buf.appendSlice(a.asStringLiteral());
+                        try buf.appendSlice(b.asStringLiteral());
+                        const new_str = try buf.toOwnedSlice();
+                        defer self.gc.backing_allocator.free(new_str);
+                        const alloc_str = try self.gc.allocString(new_str);
+                        self.push(Value{ .String = alloc_str });
+                    }
                 },
                 .Constant => {
                     const value: Value = self.readConstant();

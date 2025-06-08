@@ -18,7 +18,7 @@ const ObjectType = enum {
 const DestroyFn = *const fn (allocator: Allocator, ptr: *anyopaque) void;
 
 pub const GcNode = struct {
-    marked: bool = false,
+    marked: bool = true,
     next: ?*GcNode = null,
     previous: ?*GcNode = null,
     object_type: ObjectType,

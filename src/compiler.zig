@@ -3,12 +3,14 @@ const builtin = @import("builtin");
 
 const compiled_function_file = @import("compiled_function.zig");
 const disassembler = @import("disassembler.zig");
+const gc_file = @import("gc_allocator.zig");
 const scanner_file = @import("scanner.zig");
 const opcode_file = @import("opcodes.zig");
 const value_file = @import("value.zig");
 
 const Allocator = std.mem.Allocator;
 const CompiledFunction = compiled_function_file.CompiledFunction;
+const GarbageCollector = gc_file.GcAllocator;
 const Op = opcode_file.Op;
 const Token = scanner_file.Token;
 const TokenType = scanner_file.TokenType;
@@ -69,7 +71,7 @@ const RULES = std.EnumArray(TokenType, ParseRule).init(.{
     .Less = .{ .prefix = null, .infix = Compiler.binary, .precedence = .Comparison },
     .LessEqual = .{ .prefix = null, .infix = Compiler.binary, .precedence = .Comparison },
     .Identifier = .{ .prefix = null, .infix = null, .precedence = .None },
-    .String = .{ .prefix = null, .infix = null, .precedence = .None },
+    .String = .{ .prefix = Compiler.string, .infix = null, .precedence = .None },
     .Number = .{ .prefix = Compiler.number, .infix = null, .precedence = .None },
     .And = .{ .prefix = null, .infix = null, .precedence = .None },
     .Class = .{ .prefix = null, .infix = null, .precedence = .None },
@@ -92,6 +94,7 @@ const RULES = std.EnumArray(TokenType, ParseRule).init(.{
 
 /// Compiler converts source code into runnable bytecode.
 pub const Compiler = struct {
+    gc: *GarbageCollector,
     scanner: Scanner,
     current: Token,
     previous: Token,
@@ -104,8 +107,9 @@ pub const Compiler = struct {
     /// After compilation of source code, the scope that calls "compile" will
     /// own the memory for the CompiledFunction and must deinit the object when
     /// it goes out of scope.
-    pub fn init(compiled_function: *CompiledFunction) Compiler {
+    pub fn init(gc: *GarbageCollector, compiled_function: *CompiledFunction) Compiler {
         return Compiler{
+            .gc = gc,
             .scanner = undefined,
             .current = undefined,
             .previous = undefined,
@@ -125,6 +129,7 @@ pub const Compiler = struct {
 
     pub fn end(self: *Self) bool {
         self.emitReturn() catch {};
+        self.gc.collect();
         if (self.had_error) {
             return false;
         }
@@ -262,6 +267,11 @@ pub const Compiler = struct {
     pub fn number(self: *Self) !void {
         const value = try std.fmt.parseFloat(f64, self.previous.lexeme);
         return self.emitConstant(Value{ .Number = value });
+    }
+
+    pub fn string(self: *Self) !void {
+        const new_str = try self.gc.allocString(self.previous.lexeme);
+        try self.emitConstant(Value{ .String = new_str });
     }
 
     pub fn grouping(self: *Self) !void {

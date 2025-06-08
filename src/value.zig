@@ -28,10 +28,38 @@ pub const Value = union(enum) {
         };
     }
 
+    pub fn isBool(self: *const Self) bool {
+        return switch (self.*) {
+            .Bool => true,
+            else => false,
+        };
+    }
+
     pub fn asBool(self: *const Self) bool {
         return switch (self.*) {
             .Bool => |b| b,
             else => @panic("NOT A BOOLEAN"),
+        };
+    }
+
+    pub fn isString(self: *const Self) bool {
+        return switch (self.*) {
+            .String => true,
+            else => false,
+        };
+    }
+
+    pub fn asString(self: *const Self) *GcObject(String) {
+        return switch (self.*) {
+            .String => |s| s,
+            else => @panic("NOT A STRING"),
+        };
+    }
+
+    pub fn asStringLiteral(self: *const Self) []const u8 {
+        return switch (self.*) {
+            .String => |s| s.data.value,
+            else => @panic("NOT A STRING"),
         };
     }
 
