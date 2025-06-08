@@ -121,9 +121,12 @@ pub const Compiler = struct {
 
     pub fn compile(self: *Self, source: []const u8) !bool {
         self.scanner = Scanner.new(source);
-        try self.advance();
-        try self.expression();
-        try self.consume(TokenType.EOF, "Expect end of expression.");
+        self.advance();
+
+        while (!self.match(.EOF)) {
+            try self.declaration();
+        }
+
         return self.end();
     }
 
@@ -140,7 +143,7 @@ pub const Compiler = struct {
         return true;
     }
 
-    pub fn advance(self: *Self) !void {
+    pub fn advance(self: *Self) void {
         self.previous = self.current;
         const result = self.scanner.scanToken();
 
@@ -149,6 +152,19 @@ pub const Compiler = struct {
         } else {
             self.handleError(result.unwrapErr());
         }
+    }
+
+    pub fn match(self: *Self, token_type: TokenType) bool {
+        if (!self.check(token_type)) {
+            return false;
+        }
+
+        self.advance();
+        return true;
+    }
+
+    pub fn check(self: *Self, token_type: TokenType) bool {
+        return self.current.token_type == token_type;
     }
 
     fn handleError(self: *Self, err: ScanError) void {
@@ -205,7 +221,7 @@ pub const Compiler = struct {
 
     fn consume(self: *Self, token_type: TokenType, message: []const u8) !void {
         if (self.current.token_type == token_type) {
-            try self.advance();
+            self.advance();
             return;
         }
 
@@ -240,7 +256,7 @@ pub const Compiler = struct {
     }
 
     pub fn parsePrecedence(self: *Self, precedence: Precedence) !void {
-        try self.advance();
+        self.advance();
         const prefix_rule = RULES.get(self.previous.token_type).prefix;
         if (prefix_rule == null) {
             self.handlePreviousError("Expect expression.");
@@ -252,7 +268,7 @@ pub const Compiler = struct {
         }
 
         while (@intFromEnum(precedence) <= @intFromEnum(RULES.get(self.current.token_type).precedence)) {
-            try self.advance();
+            self.advance();
             const infix_rule = RULES.get(self.previous.token_type).infix;
             if (infix_rule) |ifx| {
                 try ifx(self);
@@ -262,6 +278,22 @@ pub const Compiler = struct {
 
     pub fn expression(self: *Self) !void {
         return self.parsePrecedence(Precedence.Assignment);
+    }
+
+    pub fn declaration(self: *Self) !void {
+        try self.statement();
+    }
+
+    pub fn statement(self: *Self) !void {
+        if (self.match(.Print)) {
+            try self.printStatement();
+        }
+    }
+
+    pub fn printStatement(self: *Self) !void {
+        try self.expression();
+        try self.consume(.Semicolon, "Expect ';' after value.");
+        try self.emitOp(.Print);
     }
 
     pub fn number(self: *Self) !void {

@@ -398,6 +398,8 @@ pub const Scanner = struct {
                     '\n' => {
                         self.advanceCodepoint() catch break;
                         self.line += 1;
+                        self.line_start = self.current;
+                        self.column = 0;
                     },
                     '/' => {
                         const next_cp = self.peekNextCodepoint() catch break;

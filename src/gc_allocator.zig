@@ -96,18 +96,24 @@ pub const GcAllocator = struct {
         self.vm = vm;
     }
 
-    // pub fn deinit(self: *Self) void {
-    //     var current = self.objects;
-    //     while (current != null) {
-    //         const next = current.?.next;
-    //         current.?.destroy_fn(self.backing_allocator, current.?);
-    //         current = next;
-    //     }
-    //     self.interned_strings.deinit();
-    //     std.debug.print("TOTAL BYTES ALLOCATED: {d}\n", .{self.bytes_allocated});
-    // }
-    //
+    pub fn reset(self: *Self) void {
+        self.cleanObjects();
+        self.interned_strings.clearAndFree();
+        self.interned_strings.deinit();
+        self.interned_strings = std.StringHashMap(*GcObject(String)).init(self.backing_allocator);
+        self.bytes_allocated = 0;
+    }
+
     pub fn deinit(self: *Self) void {
+        self.cleanObjects();
+
+        // THEN clean up the HashMap
+        self.interned_strings.deinit();
+
+        std.debug.print("TOTAL BYTES ALLOCATED: {d}\n", .{self.bytes_allocated});
+    }
+
+    pub fn cleanObjects(self: *Self) void {
         // Clean up objects FIRST (while HashMap is still valid)
         var current = self.objects;
         while (current != null) {
@@ -119,11 +125,7 @@ pub const GcAllocator = struct {
 
             current = next;
         }
-
-        // THEN clean up the HashMap
-        self.interned_strings.deinit();
-
-        std.debug.print("TOTAL BYTES ALLOCATED: {d}\n", .{self.bytes_allocated});
+        self.objects = null;
     }
 
     /// Generic allocation helper - used by specific methods
@@ -177,7 +179,7 @@ pub const GcAllocator = struct {
         var newString = try self.allocGcObject(String, .string, GcObject(String).destroyString);
         newString.data = String{ .value = owned_str };
 
-        try self.interned_strings.put(str, newString);
+        try self.interned_strings.put(newString.data.value, newString);
         std.debug.print("INTERNED STRINGS: {d}\n", .{self.interned_strings.count()});
         return newString;
     }

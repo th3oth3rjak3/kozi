@@ -92,19 +92,22 @@ fn runRepl(allocator: Allocator) !void {
 
     gc.setVm(&vm);
 
+    var fun = CompiledFunction.init(allocator);
+    defer fun.deinit();
+
     const stdin = std.io.getStdIn().reader();
 
     var buf: [1024]u8 = undefined;
 
     while (true) {
+        gc.reset();
         std.debug.print("> ", .{});
         if (try stdin.readUntilDelimiterOrEof(buf[0..], '\n')) |input| {
             // Got input
             const trimmed = std.mem.trim(u8, input, " \t\r\n");
             if (trimmed.len == 0) continue;
-            var fun = CompiledFunction.init(allocator);
-            defer fun.deinit();
             _ = try vm.interpret(trimmed, &fun);
+            fun.reset();
         } else {
             // EOF (Ctrl+D) detected
             break;

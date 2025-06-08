@@ -50,6 +50,7 @@ pub fn disassembleInstruction(fun: *const CompiledFunction, offset: usize, write
         .GreaterEqual => simpleInstruction("OP_GREATER_EQUAL", offset, writer),
         .Less => simpleInstruction("OP_LESS", offset, writer),
         .LessEqual => simpleInstruction("OP_LESS_EQUAL", offset, writer),
+        .Print => simpleInstruction("OP_PRINT", offset, writer),
     };
 }
 

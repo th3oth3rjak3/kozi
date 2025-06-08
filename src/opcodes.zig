@@ -27,4 +27,5 @@ pub const Op = enum(u8) {
     GreaterEqual,
     Less,
     LessEqual,
+    Print,
 };

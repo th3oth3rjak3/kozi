@@ -35,7 +35,26 @@ pub const CompiledFunction = struct {
         self.lines.deinit();
     }
 
+    pub fn reset(self: *Self) void {
+        self.constants.clearAndFree();
+        self.constants.deinit();
+        self.constants = std.ArrayList(Value).init(self.allocator);
+
+        self.bytecode.clearAndFree();
+        self.bytecode.deinit();
+        self.bytecode = std.ArrayList(u8).init(self.allocator);
+
+        self.lines.clearAndFree();
+        self.lines.deinit();
+        self.lines = std.ArrayList(usize).init(self.allocator);
+    }
+
     pub fn addConstant(self: *Self, value: Value) !u16 {
+        for (self.constants.items, 0..) |existing_value, i| {
+            if (existing_value.equals(&value)) {
+                return @intCast(i);
+            }
+        }
         try self.constants.append(value);
         return @intCast(self.constants.items.len - 1);
     }
@@ -50,8 +69,6 @@ pub const CompiledFunction = struct {
         const low_byte: u8 = @intCast(short & 0xFF);
         try self.writeByte(high_byte, line);
         try self.writeByte(low_byte, line);
-        try self.lines.append(line);
-        try self.lines.append(line);
     }
 
     pub fn writeOp(self: *Self, op: Op, line: usize) !void {

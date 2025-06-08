@@ -212,11 +212,12 @@ pub const VirtualMachine = struct {
                 .Pop => {
                     _ = self.pop();
                 },
-                .Return => {
-                    const value = self.pop();
-                    try value.printValue(WRITER);
+                .Print => {
+                    try self.pop().printValue(WRITER);
                     try WRITER.print("\n", .{});
-                    BUF_WRITER.flush() catch {};
+                    try BUF_WRITER.flush();
+                },
+                .Return => {
                     return .Ok;
                 },
                 .Subtract => {
@@ -284,7 +285,6 @@ pub const VirtualMachine = struct {
     }
 
     pub fn traceRoots(self: *Self) void {
-        std.io.getStdErr().writer().print("TRACING ROOTS!!\n", .{}) catch unreachable;
         var slot: usize = 0;
         while (slot < self.stack_top) {
             const item = self.stack[slot];
