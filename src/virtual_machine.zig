@@ -157,6 +157,10 @@ pub const VirtualMachine = struct {
 
                     self.push(value.?);
                 },
+                .GetLocal => {
+                    const slot = self.readByte();
+                    self.push(self.stack[slot]);
+                },
                 .Greater => {
                     if (!self.peek(0).isNumber() or !self.peek(1).isNumber()) {
                         self.runtimeError("Operands must be numbers.", .{});
@@ -248,6 +252,10 @@ pub const VirtualMachine = struct {
                     }
 
                     entry.?.value_ptr.* = self.peek(0);
+                },
+                .SetLocal => {
+                    const slot = self.readByte();
+                    self.stack[slot] = self.peek(0);
                 },
                 .Subtract => {
                     if (!self.peek(0).isNumber() or !self.peek(1).isNumber()) {

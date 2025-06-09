@@ -54,6 +54,8 @@ pub fn disassembleInstruction(fun: *const CompiledFunction, offset: usize, write
         .DefineGlobal => constantInstruction("OP_DEFINE_GLOBAL", fun, offset, writer),
         .GetGlobal => constantInstruction("OP_GET_GLOBAL", fun, offset, writer),
         .SetGlobal => constantInstruction("OP_SET_GLOBAL", fun, offset, writer),
+        .GetLocal => byteInstruction("OP_GET_LOCAL", fun, offset, writer),
+        .SetLocal => byteInstruction("OP_SET_LOCAL", fun, offset, writer),
     };
 }
 
@@ -71,4 +73,10 @@ fn constantInstruction(name: []const u8, fun: *const CompiledFunction, offset: u
     try value.printValue(writer);
     try std.fmt.format(writer, "'\n", .{});
     return offset + 3;
+}
+
+fn byteInstruction(name: []const u8, fun: *const CompiledFunction, offset: usize, writer: anytype) !usize {
+    const slot = fun.bytecode.items[offset + 1];
+    try std.fmt.format(writer, "{s:<16} {d:04}\n", .{ name, slot });
+    return offset + 2;
 }

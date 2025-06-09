@@ -21,6 +21,7 @@ const Value = value_file.Value;
 
 var BUF_WRITER = std.io.bufferedWriter(std.io.getStdOut().writer());
 const WRITER = BUF_WRITER.writer();
+const UINT8_MAX: usize = std.math.maxInt(u8) + 1;
 
 pub const Precedence = enum(u8) {
     None,
@@ -92,6 +93,11 @@ const RULES = std.EnumArray(TokenType, ParseRule).init(.{
     .EOF = .{ .prefix = null, .infix = null, .precedence = .None },
 });
 
+pub const Local = struct {
+    name: Token,
+    depth: isize,
+};
+
 /// Compiler converts source code into runnable bytecode.
 pub const Compiler = struct {
     gc: *GarbageCollector,
@@ -101,6 +107,9 @@ pub const Compiler = struct {
     had_error: bool,
     panic_mode: bool,
     compiled_function: *CompiledFunction,
+    scope_depth: isize,
+    locals: [UINT8_MAX]Local,
+    local_count: usize,
 
     const Self = @This();
 
@@ -116,6 +125,9 @@ pub const Compiler = struct {
             .had_error = false,
             .panic_mode = false,
             .compiled_function = compiled_function,
+            .locals = [_]Local{Local{ .name = undefined, .depth = undefined }} ** UINT8_MAX,
+            .local_count = 0,
+            .scope_depth = 0,
         };
     }
 
@@ -324,9 +336,34 @@ pub const Compiler = struct {
     pub fn statement(self: *Self) !void {
         if (self.match(.Print)) {
             try self.printStatement();
+        } else if (self.match(.LeftBrace)) {
+            self.beginScope();
+            try self.block();
+            try self.endScope();
         } else {
             try self.expressionStatement();
         }
+    }
+
+    pub fn beginScope(self: *Self) void {
+        self.scope_depth += 1;
+    }
+
+    pub fn endScope(self: *Self) !void {
+        self.scope_depth -= 1;
+
+        while (self.local_count > 0 and self.locals[self.local_count - 1].depth > self.scope_depth) {
+            try self.emitOp(.Pop);
+            self.local_count -= 1;
+        }
+    }
+
+    pub fn block(self: *Self) anyerror!void {
+        while (!self.check(.RightBrace) and !self.check(.EOF)) {
+            try self.declaration();
+        }
+
+        try self.consume(.RightBrace, "Expect '}' after block.");
     }
 
     pub fn printStatement(self: *Self) !void {
@@ -356,6 +393,12 @@ pub const Compiler = struct {
 
     pub fn parseVariable(self: *Self, message: []const u8) !u16 {
         try self.consume(.Identifier, message);
+
+        try self.declareVariable();
+        if (self.scope_depth > 0) {
+            return 0;
+        }
+
         return self.identifierConstant(&self.previous);
     }
 
@@ -365,8 +408,56 @@ pub const Compiler = struct {
     }
 
     pub fn defineVariable(self: *Self, idx: u16) !void {
+        if (self.scope_depth > 0) {
+            self.markInitialized();
+            return;
+        }
+
         try self.emitOp(.DefineGlobal);
         try self.emitShort(idx);
+    }
+
+    pub fn markInitialized(self: *Self) void {
+        self.locals[self.local_count - 1].depth = self.scope_depth;
+    }
+
+    pub fn declareVariable(self: *Self) !void {
+        if (self.scope_depth == 0) {
+            return;
+        }
+
+        const name = self.previous;
+
+        var i = self.local_count - 1;
+        while (i >= 0) {
+            const local = self.locals[i];
+            if (local.depth != -1 and local.depth < self.scope_depth) {
+                break;
+            }
+
+            if (self.identifiersEqual(name, local.name)) {
+                self.handlePreviousError("Already a let binding with this name in this scope.");
+            }
+
+            i -= 1;
+        }
+
+        try self.addLocal(name);
+    }
+
+    fn identifiersEqual(self: *Self, a: Token, b: Token) bool {
+        _ = self;
+        return std.mem.eql(u8, a.lexeme, b.lexeme);
+    }
+
+    pub fn addLocal(self: *Self, token: Token) !void {
+        if (self.local_count >= UINT8_MAX) {
+            self.handlePreviousError("Too many local let bindings in function.");
+            return;
+        }
+        const local = Local{ .name = token, .depth = -1 };
+        self.locals[self.local_count] = local;
+        self.local_count += 1;
     }
 
     pub fn number(self: *Self, can_assign: bool) !void {
@@ -386,16 +477,41 @@ pub const Compiler = struct {
     }
 
     pub fn namedVariable(self: *Self, token: *Token, can_assign: bool) !void {
-        const arg = try self.identifierConstant(token);
+        var get_op: Op = undefined;
+        var set_op: Op = undefined;
+
+        var arg = self.resolveLocal(token);
+        if (arg != -1) {
+            get_op = .GetLocal;
+            set_op = .SetLocal;
+        } else {
+            arg = @intCast(try self.identifierConstant(token));
+            get_op = .GetGlobal;
+            set_op = .SetGlobal;
+        }
 
         // assignment case
         if (can_assign and self.match(.Equal)) {
             try self.expression();
-            try self.emitOp(.SetGlobal);
-            try self.emitShort(arg);
+            try self.emitOp(set_op);
+            try self.emitShort(@intCast(arg));
         } else {
-            try self.emitOp(.GetGlobal);
-            try self.emitShort(arg);
+            try self.emitOp(get_op);
+            try self.emitShort(@intCast(arg));
+        }
+    }
+
+    pub fn resolveLocal(self: *Self, token: *Token) isize {
+        var i = self.local_count - 1;
+        while (i >= 0) {
+            const local = self.locals[i];
+            if (self.identifiersEqual(token.*, local.name)) {
+                if (local.depth == -1) {
+                    self.handlePreviousError("Can't read local let binding in its own initializer.");
+                }
+                return @intCast(i);
+            }
+            i -= 1;
         }
     }
 

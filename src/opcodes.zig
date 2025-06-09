@@ -31,4 +31,6 @@ pub const Op = enum(u8) {
     DefineGlobal,
     GetGlobal,
     SetGlobal,
+    GetLocal,
+    SetLocal,
 };
