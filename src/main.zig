@@ -17,6 +17,7 @@ const Allocator = std.mem.Allocator;
 const CompiledFunction = compiled_function_file.CompiledFunction;
 const Compiler = compiler_file.Compiler;
 const GcAllocator = gc_file.GcAllocator;
+const GcObject = gc_file.GcObject;
 const Op = opcode_file.Op;
 const String = value.String;
 const Value = value.Value;
@@ -84,10 +85,15 @@ pub fn main() !void {
 }
 
 fn runRepl(allocator: Allocator) !void {
-    var gc = GcAllocator.init(allocator);
+    var globals = std.AutoHashMap(*GcObject(String), Value).init(allocator);
+    defer globals.deinit();
+
+    var interned_strings = std.StringHashMap(*GcObject(String)).init(allocator);
+
+    var gc = GcAllocator.init(allocator, &interned_strings);
     defer gc.deinit();
 
-    var vm = VirtualMachine.init(&gc);
+    var vm = VirtualMachine.init(&gc, &globals);
     defer vm.deinit();
 
     gc.setVm(&vm);
@@ -100,14 +106,14 @@ fn runRepl(allocator: Allocator) !void {
     var buf: [1024]u8 = undefined;
 
     while (true) {
-        gc.reset();
+        fun.reset();
+        gc.collect();
         std.debug.print("> ", .{});
         if (try stdin.readUntilDelimiterOrEof(buf[0..], '\n')) |input| {
             // Got input
             const trimmed = std.mem.trim(u8, input, " \t\r\n");
             if (trimmed.len == 0) continue;
             _ = try vm.interpret(trimmed, &fun);
-            fun.reset();
         } else {
             // EOF (Ctrl+D) detected
             break;
@@ -122,10 +128,15 @@ fn runFile(allocator: Allocator, file_path: []const u8) !void {
     const source = try file.readToEndAlloc(allocator, std.math.maxInt(u64));
     defer allocator.free(source);
 
-    var gc = GcAllocator.init(allocator);
+    var globals = std.AutoHashMap(*GcObject(String), Value).init(allocator);
+    defer globals.deinit();
+
+    var interned_strings = std.StringHashMap(*GcObject(String)).init(allocator);
+
+    var gc = GcAllocator.init(allocator, &interned_strings);
     defer gc.deinit();
 
-    var vm = VirtualMachine.init(&gc);
+    var vm = VirtualMachine.init(&gc, &globals);
     defer vm.deinit();
 
     gc.setVm(&vm);

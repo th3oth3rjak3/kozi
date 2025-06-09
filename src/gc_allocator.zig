@@ -80,15 +80,15 @@ pub const GcAllocator = struct {
     bytes_allocated: usize = 0,
     gc_threshold: usize = 1024 * 1024, // 1 MB
     vm: ?*VirtualMachine,
-    interned_strings: std.StringHashMap(*GcObject(String)),
+    interned_strings: *std.StringHashMap(*GcObject(String)),
 
     const Self = @This();
 
-    pub fn init(backing_allocator: Allocator) Self {
+    pub fn init(backing_allocator: Allocator, interned_strings: *std.StringHashMap(*GcObject(String))) Self {
         return .{
             .backing_allocator = backing_allocator,
             .vm = null,
-            .interned_strings = std.StringHashMap(*GcObject(String)).init(backing_allocator),
+            .interned_strings = interned_strings,
         };
     }
 
@@ -96,32 +96,30 @@ pub const GcAllocator = struct {
         self.vm = vm;
     }
 
-    pub fn reset(self: *Self) void {
-        self.cleanObjects();
-        self.interned_strings.clearAndFree();
-        self.interned_strings.deinit();
-        self.interned_strings = std.StringHashMap(*GcObject(String)).init(self.backing_allocator);
-        self.bytes_allocated = 0;
-    }
-
     pub fn deinit(self: *Self) void {
+        var it = self.interned_strings.iterator();
+        while (it.next()) |entry| {
+            _ = self.interned_strings.remove(entry.key_ptr.*);
+        }
         self.cleanObjects();
-
-        // THEN clean up the HashMap
         self.interned_strings.deinit();
-
         std.debug.print("TOTAL BYTES ALLOCATED: {d}\n", .{self.bytes_allocated});
     }
 
     pub fn cleanObjects(self: *Self) void {
         // Clean up objects FIRST (while HashMap is still valid)
         var current = self.objects;
-        while (current != null) {
-            const next = current.?.next;
+        while (current) |node| {
+            const next = node.next;
+
+            if (node.object_type == .string) {
+                const str_obj: *GcObject(String) = @fieldParentPtr("header", node);
+                _ = self.interned_strings.remove(str_obj.data.value);
+            }
 
             // Convert GcNode* back to the original GcObject(T)*
-            const gc_obj_ptr: *GcObject(String) = @fieldParentPtr("header", current.?);
-            current.?.destroy_fn(self.backing_allocator, gc_obj_ptr);
+            const gc_obj_ptr: *GcObject(String) = @fieldParentPtr("header", node);
+            node.destroy_fn(self.backing_allocator, gc_obj_ptr);
 
             current = next;
         }
@@ -258,40 +256,53 @@ pub const GcAllocator = struct {
     }
 
     pub fn collect(self: *Self) void {
+        self.resetMarks();
         if (self.vm) |vm| {
             vm.traceRoots();
         }
         self.sweep();
-        self.resetMarks();
     }
 
     pub fn sweep(self: *Self) void {
         var current = self.objects;
+        var previous: ?*GcNode = null;
 
-        while (current != null) {
-            if (current) |node| {
-                const next = node.next;
+        while (current) |node| {
+            const next = node.next;
 
-                if (!node.marked) {
-                    if (node == self.objects) {
-                        self.objects = next;
-                    }
-                    node.unlink();
-
-                    const current_size = node.size;
-
-                    node.destroy_fn(self.backing_allocator, node);
-
-                    // Safe subtraction to prevent underflow
-                    if (self.bytes_allocated >= current_size) {
-                        self.bytes_allocated -= current_size;
-                    } else {
-                        std.log.warn("GC accounting error: trying to subtract {} from {}", .{ current_size, self.bytes_allocated });
-                        self.bytes_allocated = 0;
-                    }
+            if (!node.marked) {
+                // Remove from linked list
+                if (previous) |prev| {
+                    prev.next = next;
+                } else {
+                    self.objects = next;
                 }
-                current = next;
+
+                if (next) |nxt| {
+                    nxt.previous = previous;
+                }
+
+                // Special handling for interned strings
+                if (node.object_type == .string) {
+                    const str_obj: *GcObject(String) = @fieldParentPtr("header", node);
+                    _ = self.interned_strings.remove(str_obj.data.value);
+                }
+
+                // Destroy the object
+                const current_size = node.size;
+                node.destroy_fn(self.backing_allocator, node);
+
+                if (self.bytes_allocated >= current_size) {
+                    self.bytes_allocated -= current_size;
+                } else {
+                    std.log.warn("GC accounting error", .{});
+                    self.bytes_allocated = 0;
+                }
+            } else {
+                previous = node;
             }
+
+            current = next;
         }
     }
 

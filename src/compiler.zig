@@ -36,7 +36,7 @@ pub const Precedence = enum(u8) {
     Primary,
 };
 
-const ParseFn = *const fn (compiler: *Compiler) anyerror!void;
+const ParseFn = *const fn (compiler: *Compiler, can_assign: bool) anyerror!void;
 
 const ParseRule = struct {
     prefix: ?ParseFn,
@@ -70,7 +70,7 @@ const RULES = std.EnumArray(TokenType, ParseRule).init(.{
     .GreaterEqual = .{ .prefix = null, .infix = Compiler.binary, .precedence = .Comparison },
     .Less = .{ .prefix = null, .infix = Compiler.binary, .precedence = .Comparison },
     .LessEqual = .{ .prefix = null, .infix = Compiler.binary, .precedence = .Comparison },
-    .Identifier = .{ .prefix = null, .infix = null, .precedence = .None },
+    .Identifier = .{ .prefix = Compiler.variable, .infix = null, .precedence = .None },
     .String = .{ .prefix = Compiler.string, .infix = null, .precedence = .None },
     .Number = .{ .prefix = Compiler.number, .infix = null, .precedence = .None },
     .And = .{ .prefix = null, .infix = null, .precedence = .None },
@@ -132,7 +132,6 @@ pub const Compiler = struct {
 
     pub fn end(self: *Self) bool {
         self.emitReturn() catch {};
-        self.gc.collect();
         if (self.had_error) {
             return false;
         }
@@ -246,13 +245,18 @@ pub const Compiler = struct {
 
     fn emitConstant(self: *Self, value: Value) !void {
         try self.emitOp(Op.Constant);
+        const idx = try self.makeConstant(value);
+        try self.emitShort(idx);
+    }
+
+    fn makeConstant(self: *Self, value: Value) !u16 {
         if (self.compiled_function.*.constants.items.len > std.math.maxInt(u16)) {
             self.handlePreviousError("Too many constants.");
-            return;
+            return 0;
         }
 
         const idx = try self.compiled_function.addConstant(value);
-        try self.emitShort(idx);
+        return idx;
     }
 
     pub fn parsePrecedence(self: *Self, precedence: Precedence) !void {
@@ -263,16 +267,41 @@ pub const Compiler = struct {
             return;
         }
 
+        const can_assign = @intFromEnum(precedence) <= @intFromEnum(Precedence.Assignment);
         if (prefix_rule) |pfx| {
-            try pfx(self);
+            try pfx(self, can_assign);
         }
 
         while (@intFromEnum(precedence) <= @intFromEnum(RULES.get(self.current.token_type).precedence)) {
             self.advance();
             const infix_rule = RULES.get(self.previous.token_type).infix;
             if (infix_rule) |ifx| {
-                try ifx(self);
+                try ifx(self, can_assign);
             }
+        }
+    }
+
+    pub fn synchronize(self: *Self) !void {
+        self.panic_mode = false;
+
+        while (self.current.token_type != .EOF) {
+            if (self.previous.token_type == .Semicolon) {
+                return;
+            }
+
+            switch (self.current.token_type) {
+                .Class => return,
+                .Fun => return,
+                .Let => return,
+                .For => return,
+                .If => return,
+                .While => return,
+                .Print => return,
+                .Return => return,
+                else => {},
+            }
+
+            self.advance();
         }
     }
 
@@ -281,12 +310,22 @@ pub const Compiler = struct {
     }
 
     pub fn declaration(self: *Self) !void {
-        try self.statement();
+        if (self.match(.Let)) {
+            try self.varDeclaration();
+        } else {
+            try self.statement();
+        }
+
+        if (self.panic_mode) {
+            try self.synchronize();
+        }
     }
 
     pub fn statement(self: *Self) !void {
         if (self.match(.Print)) {
             try self.printStatement();
+        } else {
+            try self.expressionStatement();
         }
     }
 
@@ -296,22 +335,78 @@ pub const Compiler = struct {
         try self.emitOp(.Print);
     }
 
-    pub fn number(self: *Self) !void {
+    pub fn expressionStatement(self: *Self) !void {
+        try self.expression();
+        try self.consume(.Semicolon, "Expect ';' after expression.");
+        try self.emitOp(.Pop);
+    }
+
+    pub fn varDeclaration(self: *Self) !void {
+        const global = try self.parseVariable("Expect let binding name.");
+
+        if (self.match(.Equal)) {
+            try self.expression();
+        } else {
+            try self.emitOp(.Nil);
+        }
+
+        try self.consume(.Semicolon, "Expect ';' after let binding declaration.");
+        try self.defineVariable(global);
+    }
+
+    pub fn parseVariable(self: *Self, message: []const u8) !u16 {
+        try self.consume(.Identifier, message);
+        return self.identifierConstant(&self.previous);
+    }
+
+    pub fn identifierConstant(self: *Self, token: *Token) !u16 {
+        const owned = try self.gc.allocString(token.lexeme);
+        return self.makeConstant(Value{ .String = owned });
+    }
+
+    pub fn defineVariable(self: *Self, idx: u16) !void {
+        try self.emitOp(.DefineGlobal);
+        try self.emitShort(idx);
+    }
+
+    pub fn number(self: *Self, can_assign: bool) !void {
+        _ = can_assign;
         const value = try std.fmt.parseFloat(f64, self.previous.lexeme);
         return self.emitConstant(Value{ .Number = value });
     }
 
-    pub fn string(self: *Self) !void {
+    pub fn string(self: *Self, can_assign: bool) !void {
+        _ = can_assign;
         const new_str = try self.gc.allocString(self.previous.lexeme);
         try self.emitConstant(Value{ .String = new_str });
     }
 
-    pub fn grouping(self: *Self) !void {
+    pub fn variable(self: *Self, can_assign: bool) !void {
+        try self.namedVariable(&self.previous, can_assign);
+    }
+
+    pub fn namedVariable(self: *Self, token: *Token, can_assign: bool) !void {
+        const arg = try self.identifierConstant(token);
+
+        // assignment case
+        if (can_assign and self.match(.Equal)) {
+            try self.expression();
+            try self.emitOp(.SetGlobal);
+            try self.emitShort(arg);
+        } else {
+            try self.emitOp(.GetGlobal);
+            try self.emitShort(arg);
+        }
+    }
+
+    pub fn grouping(self: *Self, can_assign: bool) !void {
+        _ = can_assign;
         try self.expression();
         try self.consume(TokenType.RightParen, "Expect ')' after expression.");
     }
 
-    pub fn unary(self: *Self) !void {
+    pub fn unary(self: *Self, can_assign: bool) !void {
+        _ = can_assign;
         const op = self.previous.token_type;
 
         try self.parsePrecedence(Precedence.Unary);
@@ -327,7 +422,8 @@ pub const Compiler = struct {
         }
     }
 
-    pub fn binary(self: *Self) !void {
+    pub fn binary(self: *Self, can_assign: bool) !void {
+        _ = can_assign;
         const op = self.previous.token_type;
         const rule = RULES.get(op);
         const int_prec: u8 = @intFromEnum(rule.precedence) + 1;
@@ -368,7 +464,8 @@ pub const Compiler = struct {
         }
     }
 
-    pub fn literal(self: *Self) !void {
+    pub fn literal(self: *Self, can_assign: bool) !void {
+        _ = can_assign;
         switch (self.previous.token_type) {
             .False => try self.emitOp(.False),
             .True => try self.emitOp(.True),

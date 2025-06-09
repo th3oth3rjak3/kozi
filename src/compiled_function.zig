@@ -36,10 +36,6 @@ pub const CompiledFunction = struct {
     }
 
     pub fn reset(self: *Self) void {
-        self.constants.clearAndFree();
-        self.constants.deinit();
-        self.constants = std.ArrayList(Value).init(self.allocator);
-
         self.bytecode.clearAndFree();
         self.bytecode.deinit();
         self.bytecode = std.ArrayList(u8).init(self.allocator);

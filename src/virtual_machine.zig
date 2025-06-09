@@ -18,8 +18,10 @@ const WRITER = BUF_WRITER.writer();
 const Compiler = compiler_file.Compiler;
 const CompiledFunction = compiled_function.CompiledFunction;
 const GarbageCollector = gc_file.GcAllocator;
+const GcObject = gc_file.GcObject;
 const Object = value_file.Object;
 const Op = opcode_file.Op;
+const String = value_file.String;
 const Value = value_file.Value;
 
 const STACK_MAX: usize = 256;
@@ -36,16 +38,18 @@ pub const VirtualMachine = struct {
     stack_top: usize,
     ip: usize,
     compiled_function: ?*CompiledFunction,
+    globals: *std.AutoHashMap(*GcObject(String), Value),
 
     const Self = @This();
 
-    pub fn init(garbage_collector: *GarbageCollector) VirtualMachine {
+    pub fn init(garbage_collector: *GarbageCollector, globals: *std.AutoHashMap(*GcObject(String), Value)) VirtualMachine {
         return VirtualMachine{
             .gc = garbage_collector,
             .stack = [_]Value{Value.Nil} ** STACK_MAX,
             .compiled_function = null,
             .ip = 0,
             .stack_top = 0,
+            .globals = globals,
         };
     }
 
@@ -120,6 +124,11 @@ pub const VirtualMachine = struct {
                     const value: Value = self.readConstant();
                     self.push(value);
                 },
+                .DefineGlobal => {
+                    const name = self.readString();
+                    try self.globals.put(name, self.peek(0));
+                    _ = self.pop();
+                },
                 .Divide => {
                     if (!self.peek(0).isNumber() or !self.peek(1).isNumber()) {
                         self.runtimeError("Operands must be numbers.", .{});
@@ -137,6 +146,16 @@ pub const VirtualMachine = struct {
                 },
                 .False => {
                     self.push(Value{ .Bool = false });
+                },
+                .GetGlobal => {
+                    const str = self.readString();
+                    const value = self.globals.get(str);
+                    if (value == null) {
+                        self.runtimeError("Undefined let binding '{s}'.", .{str.data.value});
+                        return .RuntimeError;
+                    }
+
+                    self.push(value.?);
                 },
                 .Greater => {
                     if (!self.peek(0).isNumber() or !self.peek(1).isNumber()) {
@@ -220,6 +239,16 @@ pub const VirtualMachine = struct {
                 .Return => {
                     return .Ok;
                 },
+                .SetGlobal => {
+                    const name = self.readString();
+                    const entry = self.globals.getEntry(name);
+                    if (entry == null) {
+                        self.runtimeError("Undefined let binding '{s}'.", .{name.data.value});
+                        return .RuntimeError;
+                    }
+
+                    entry.?.value_ptr.* = self.peek(0);
+                },
                 .Subtract => {
                     if (!self.peek(0).isNumber() or !self.peek(1).isNumber()) {
                         self.runtimeError("Operands must be numbers.", .{});
@@ -284,6 +313,10 @@ pub const VirtualMachine = struct {
         return self.compiled_function.?.constants.items[idx];
     }
 
+    inline fn readString(self: *Self) *GcObject(String) {
+        return self.readConstant().asString();
+    }
+
     pub fn traceRoots(self: *Self) void {
         var slot: usize = 0;
         while (slot < self.stack_top) {
@@ -297,7 +330,26 @@ pub const VirtualMachine = struct {
             slot += @sizeOf(Value);
         }
 
-        // TODO: global scanning
+        var iterator = self.globals.valueIterator();
+        while (iterator.next()) |v| {
+            switch (v.*) {
+                .String => |s| {
+                    self.gc.markObject(s);
+                },
+                else => {},
+            }
+        }
+
+        if (self.compiled_function) |fun| {
+            for (fun.constants.items) |value| {
+                switch (value) {
+                    .String => |s| {
+                        self.gc.markObject(s);
+                    },
+                    else => {},
+                }
+            }
+        }
     }
 
     pub inline fn push(self: *Self, value: Value) void {

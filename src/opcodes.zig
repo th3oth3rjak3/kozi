@@ -28,4 +28,7 @@ pub const Op = enum(u8) {
     Less,
     LessEqual,
     Print,
+    DefineGlobal,
+    GetGlobal,
+    SetGlobal,
 };

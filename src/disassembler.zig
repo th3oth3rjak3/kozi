@@ -51,6 +51,9 @@ pub fn disassembleInstruction(fun: *const CompiledFunction, offset: usize, write
         .Less => simpleInstruction("OP_LESS", offset, writer),
         .LessEqual => simpleInstruction("OP_LESS_EQUAL", offset, writer),
         .Print => simpleInstruction("OP_PRINT", offset, writer),
+        .DefineGlobal => constantInstruction("OP_DEFINE_GLOBAL", fun, offset, writer),
+        .GetGlobal => constantInstruction("OP_GET_GLOBAL", fun, offset, writer),
+        .SetGlobal => constantInstruction("OP_SET_GLOBAL", fun, offset, writer),
     };
 }
 
