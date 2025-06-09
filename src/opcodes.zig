@@ -33,4 +33,6 @@ pub const Op = enum(u8) {
     SetGlobal,
     GetLocal,
     SetLocal,
+    JumpFalse,
+    Jump,
 };

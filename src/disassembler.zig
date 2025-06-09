@@ -56,6 +56,8 @@ pub fn disassembleInstruction(fun: *const CompiledFunction, offset: usize, write
         .SetGlobal => constantInstruction("OP_SET_GLOBAL", fun, offset, writer),
         .GetLocal => byteInstruction("OP_GET_LOCAL", fun, offset, writer),
         .SetLocal => byteInstruction("OP_SET_LOCAL", fun, offset, writer),
+        .JumpFalse => jumpInstruction("OP_JUMP_FALSE", 1, fun, offset, writer),
+        .Jump => jumpInstruction("OP_JUMP", 1, fun, offset, writer),
     };
 }
 
@@ -79,4 +81,12 @@ fn byteInstruction(name: []const u8, fun: *const CompiledFunction, offset: usize
     const slot = fun.bytecode.items[offset + 1];
     try std.fmt.format(writer, "{s:<16} {d:04}\n", .{ name, slot });
     return offset + 2;
+}
+
+fn jumpInstruction(name: []const u8, sign: i8, fun: *const CompiledFunction, offset: usize, writer: anytype) !usize {
+    var jump: u16 = @as(u16, @intCast(fun.bytecode.items[offset + 1])) << 8;
+    jump |= @as(u16, @intCast(fun.bytecode.items[offset + 2]));
+
+    try std.fmt.format(writer, "{s:<16} {d:04} -> {d}\n", .{ name, offset, offset + 3 + @as(usize, @intCast(sign * @as(i32, @intCast(jump)))) });
+    return offset + 3;
 }

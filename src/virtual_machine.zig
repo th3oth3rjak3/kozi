@@ -181,6 +181,16 @@ pub const VirtualMachine = struct {
                     const result = a.asNumber() >= b.asNumber();
                     self.push(Value{ .Bool = result });
                 },
+                .Jump => {
+                    const offset = self.readShort();
+                    self.ip += offset;
+                },
+                .JumpFalse => {
+                    const offset = self.readShort();
+                    if (self.peek(0).isFalsey()) {
+                        self.ip += offset;
+                    }
+                },
                 .Less => {
                     if (!self.peek(0).isNumber() or !self.peek(1).isNumber()) {
                         self.runtimeError("Operands must be numbers.", .{});

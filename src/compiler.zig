@@ -247,6 +247,24 @@ pub const Compiler = struct {
         return self.compiled_function.writeShort(short, self.previous.line);
     }
 
+    fn emitJump(self: *Self, op: Op) !usize {
+        try self.emitOp(op);
+        try self.emitByte(0xFF);
+        try self.emitByte(0xFF);
+        return self.compiled_function.bytecode.items.len - 2;
+    }
+
+    fn patchJump(self: *Self, offset: usize) !void {
+        const jump = self.compiled_function.bytecode.items.len - offset - 2;
+
+        if (jump > std.math.maxInt(u16)) {
+            self.handlePreviousError("Too much code to jump over.");
+        }
+
+        self.compiled_function.bytecode.items[offset] = @intCast((jump >> 8) & 0xFF);
+        self.compiled_function.bytecode.items[offset + 1] = @intCast(jump & 0xFF);
+    }
+
     fn emitOp(self: *Self, op: Op) !void {
         return self.compiled_function.writeOp(op, self.previous.line);
     }
@@ -333,13 +351,15 @@ pub const Compiler = struct {
         }
     }
 
-    pub fn statement(self: *Self) !void {
+    pub fn statement(self: *Self) anyerror!void {
         if (self.match(.Print)) {
             try self.printStatement();
         } else if (self.match(.LeftBrace)) {
             self.beginScope();
             try self.block();
             try self.endScope();
+        } else if (self.match(.If)) {
+            try self.ifStatement();
         } else {
             try self.expressionStatement();
         }
@@ -376,6 +396,27 @@ pub const Compiler = struct {
         try self.expression();
         try self.consume(.Semicolon, "Expect ';' after expression.");
         try self.emitOp(.Pop);
+    }
+
+    pub fn ifStatement(self: *Self) !void {
+        try self.consume(.LeftParen, "Expect '(' after 'if'.");
+        try self.expression();
+        try self.consume(.RightParen, "Expect ')' after condition.");
+
+        const thenJump = try self.emitJump(.JumpFalse);
+        try self.emitOp(.Pop);
+        try self.statement();
+
+        const elseJump = try self.emitJump(.Jump);
+
+        try self.patchJump(thenJump);
+        try self.emitOp(.Pop);
+
+        if (self.match(.Else)) {
+            try self.statement();
+        }
+
+        try self.patchJump(elseJump);
     }
 
     pub fn varDeclaration(self: *Self) !void {
