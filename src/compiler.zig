@@ -74,7 +74,7 @@ const RULES = std.EnumArray(TokenType, ParseRule).init(.{
     .Identifier = .{ .prefix = Compiler.variable, .infix = null, .precedence = .None },
     .String = .{ .prefix = Compiler.string, .infix = null, .precedence = .None },
     .Number = .{ .prefix = Compiler.number, .infix = null, .precedence = .None },
-    .And = .{ .prefix = null, .infix = null, .precedence = .None },
+    .And = .{ .prefix = null, .infix = Compiler.and_, .precedence = .And },
     .Class = .{ .prefix = null, .infix = null, .precedence = .None },
     .Else = .{ .prefix = null, .infix = null, .precedence = .None },
     .False = .{ .prefix = Compiler.literal, .infix = null, .precedence = .None },
@@ -82,7 +82,7 @@ const RULES = std.EnumArray(TokenType, ParseRule).init(.{
     .Fun = .{ .prefix = null, .infix = null, .precedence = .None },
     .If = .{ .prefix = null, .infix = null, .precedence = .None },
     .Nil = .{ .prefix = Compiler.literal, .infix = null, .precedence = .None },
-    .Or = .{ .prefix = null, .infix = null, .precedence = .None },
+    .Or = .{ .prefix = null, .infix = Compiler.or_, .precedence = .Or },
     .Print = .{ .prefix = null, .infix = null, .precedence = .None },
     .Return = .{ .prefix = null, .infix = null, .precedence = .None },
     .Super = .{ .prefix = null, .infix = null, .precedence = .None },
@@ -109,7 +109,7 @@ pub const Compiler = struct {
     compiled_function: *CompiledFunction,
     scope_depth: isize,
     locals: [UINT8_MAX]Local,
-    local_count: usize,
+    local_count: isize,
 
     const Self = @This();
 
@@ -269,6 +269,18 @@ pub const Compiler = struct {
         return self.compiled_function.writeOp(op, self.previous.line);
     }
 
+    fn emitLoop(self: *Self, loop_start: usize) !void {
+        try self.emitOp(.Loop);
+
+        const offset = self.compiled_function.bytecode.items.len - loop_start + 2;
+        if (offset > std.math.maxInt(u16)) {
+            self.handlePreviousError("Loop body too large.");
+        }
+
+        try self.emitByte(@intCast((offset >> 8) & 0xFF));
+        try self.emitByte(@intCast(offset & 0xFF));
+    }
+
     fn emitReturn(self: *Self) !void {
         return self.emitOp(Op.Return);
     }
@@ -360,6 +372,8 @@ pub const Compiler = struct {
             try self.endScope();
         } else if (self.match(.If)) {
             try self.ifStatement();
+        } else if (self.match(.While)) {
+            try self.whileStatement();
         } else {
             try self.expressionStatement();
         }
@@ -372,7 +386,7 @@ pub const Compiler = struct {
     pub fn endScope(self: *Self) !void {
         self.scope_depth -= 1;
 
-        while (self.local_count > 0 and self.locals[self.local_count - 1].depth > self.scope_depth) {
+        while (self.local_count > 0 and self.locals[@intCast(self.local_count - 1)].depth > self.scope_depth) {
             try self.emitOp(.Pop);
             self.local_count -= 1;
         }
@@ -419,6 +433,21 @@ pub const Compiler = struct {
         try self.patchJump(elseJump);
     }
 
+    pub fn whileStatement(self: *Self) !void {
+        const loop_start = self.compiled_function.bytecode.items.len;
+        try self.consume(.LeftParen, "Expect '(' after 'while'.");
+        try self.expression();
+        try self.consume(.RightParen, "Expect ')' after condition.");
+
+        const exit_jump = try self.emitJump(.JumpFalse);
+        try self.emitOp(.Pop);
+        try self.statement();
+        try self.emitLoop(loop_start);
+
+        try self.patchJump(exit_jump);
+        try self.emitOp(.Pop);
+    }
+
     pub fn varDeclaration(self: *Self) !void {
         const global = try self.parseVariable("Expect let binding name.");
 
@@ -459,7 +488,7 @@ pub const Compiler = struct {
     }
 
     pub fn markInitialized(self: *Self) void {
-        self.locals[self.local_count - 1].depth = self.scope_depth;
+        self.locals[@intCast(self.local_count - 1)].depth = self.scope_depth;
     }
 
     pub fn declareVariable(self: *Self) !void {
@@ -471,7 +500,7 @@ pub const Compiler = struct {
 
         var i = self.local_count - 1;
         while (i >= 0) {
-            const local = self.locals[i];
+            const local = self.locals[@intCast(i)];
             if (local.depth != -1 and local.depth < self.scope_depth) {
                 break;
             }
@@ -497,7 +526,7 @@ pub const Compiler = struct {
             return;
         }
         const local = Local{ .name = token, .depth = -1 };
-        self.locals[self.local_count] = local;
+        self.locals[@intCast(self.local_count)] = local;
         self.local_count += 1;
     }
 
@@ -543,17 +572,19 @@ pub const Compiler = struct {
     }
 
     pub fn resolveLocal(self: *Self, token: *Token) isize {
-        var i = self.local_count - 1;
+        var i: isize = self.local_count - 1;
         while (i >= 0) {
-            const local = self.locals[i];
+            const local = self.locals[@intCast(i)];
             if (self.identifiersEqual(token.*, local.name)) {
                 if (local.depth == -1) {
                     self.handlePreviousError("Can't read local let binding in its own initializer.");
                 }
-                return @intCast(i);
+                return i;
             }
             i -= 1;
         }
+
+        return -1;
     }
 
     pub fn grouping(self: *Self, can_assign: bool) !void {
@@ -629,5 +660,23 @@ pub const Compiler = struct {
             .Nil => try self.emitOp(.Nil),
             else => {},
         }
+    }
+
+    pub fn and_(self: *Self, can_assign: bool) !void {
+        _ = can_assign;
+        const end_jump = try self.emitJump(.JumpFalse);
+        try self.emitOp(.Pop);
+        try self.parsePrecedence(.And);
+        try self.patchJump(end_jump);
+    }
+
+    pub fn or_(self: *Self, can_assign: bool) !void {
+        _ = can_assign;
+        const else_jump = try self.emitJump(.JumpFalse);
+        const end_jump = try self.emitJump(.Jump);
+        try self.patchJump(else_jump);
+        try self.emitOp(.Pop);
+        try self.parsePrecedence(.Or);
+        try self.patchJump(end_jump);
     }
 };

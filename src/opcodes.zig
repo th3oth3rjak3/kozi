@@ -35,4 +35,5 @@ pub const Op = enum(u8) {
     SetLocal,
     JumpFalse,
     Jump,
+    Loop,
 };
